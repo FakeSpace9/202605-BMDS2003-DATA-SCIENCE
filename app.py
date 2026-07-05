@@ -77,9 +77,9 @@ with col2:
     
     # Initialize session state so the inputs and slider stay perfectly synced
     if 'start_input' not in st.session_state:
-        st.session_state.start_input = pd.to_datetime('2020-01-01').date()
+        st.session_state.start_input = pd.to_datetime('2014-01-01').date()
         st.session_state.end_input = max_date
-        st.session_state.slider_dates = (pd.to_datetime('2020-01-01').date(), max_date)
+        st.session_state.slider_dates = (pd.to_datetime('2014-01-01').date(), max_date)
 
    # Callbacks to sync the fields and the drag bar together
     def sync_from_inputs():
