@@ -58,14 +58,14 @@ with col1:
         prediction = model.predict(scaled_input)
         
         # Display Prediction with Currency formatting
-        st.success(f"### Estimated Close Price: ${prediction[0]:,.2f}")
+        st.success(f"### Estimated Close Price: ₹{prediction[0]:,.2f} (INR)")
         
     st.markdown("---")
     st.subheader('📊 Market Extremes (All-Time)')
     
     # Display Metrics with Currency formatting
-    st.metric(label="Historical Max Price", value=f"${df['Price'].max():,.0f}")
-    st.metric(label="Historical Min Price", value=f"${df['Price'].min():,.0f}")
+    st.metric(label="Historical Max Price (INR)", value=f"₹{df['Price'].max():,.0f}")
+    st.metric(label="Historical Min Price (INR)", value=f"₹{df['Price'].min():,.0f}")
 # RIGHT COLUMN: Interactive Historical Chart
 with col2:
     st.subheader('📈 Interactive Historical Trend')
