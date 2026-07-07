@@ -45,9 +45,12 @@ for name, model in models.items():
     results[name] = {'RMSE': rmse, 'R2': r2}
     print(f"{name} - RMSE: {rmse:.2f}, R2: {r2:.4f}")
 
-# 5. Save the best model and the scaler for deployment
-print("\nSaving the best model (Linear Regression) and Scaler for deployment...")
-best_model = models['Linear Regression']
-joblib.dump(best_model, 'gold_price_model.pkl')
+# 5. Save ALL models and the scaler for deployment
+print("\nSaving all 4 models and the Scaler for the advanced Streamlit comparison app...")
 joblib.dump(scaler, 'scaler.pkl')
-print("Model saved successfully as 'gold_price_model.pkl' and 'scaler.pkl'")
+joblib.dump(models['Linear Regression'], 'model_lr.pkl')
+joblib.dump(models['Decision Tree'], 'model_dt.pkl')
+joblib.dump(models['Random Forest'], 'model_rf.pkl')
+joblib.dump(models['Gradient Boosting'], 'model_gb.pkl')
+
+print("✅ Success! All models and the scaler have been saved as .pkl files.")
