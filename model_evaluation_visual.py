@@ -7,7 +7,7 @@ import numpy as np
 
 # 1. Load data
 print("Loading data...")
-df = pd.read_csv('Gold Price.csv')
+df = pd.read_csv('Gold Price_MYR.csv')
 
 # 2. Prepare Data
 X = df[['Open', 'High', 'Low', 'Volume']]
@@ -37,12 +37,13 @@ plt.fill_between(
     [min_val, max_val], 
     [min_val - rmse, max_val - rmse], 
     [min_val + rmse, max_val + rmse], 
-    color='darkgreen', alpha=0.15, label=f'RMSE Error Band (±{rmse:.0f})'
+    color='darkgreen', alpha=0.15, label=f'RMSE Error Band (±{rmse:.2f})'
 )
 
-plt.xlabel('Actual Gold Price', fontsize=12)
-plt.ylabel('Predicted Gold Price', fontsize=12)
-plt.title('Linear Regression: Actual vs Predicted Prices (With Error Band)', fontsize=14, fontweight='bold')
+# Added MYR to the labels!
+plt.xlabel('Actual Gold Price (MYR)', fontsize=12)
+plt.ylabel('Predicted Gold Price (MYR)', fontsize=12)
+plt.title('Linear Regression: Actual vs Predicted Prices (MYR)', fontsize=14, fontweight='bold')
 plt.legend()
 plt.grid(True, linestyle='--', alpha=0.7)
 

@@ -22,7 +22,7 @@ scaler, models = load_ml_assets()
 # Cache the data loading so the app runs faster
 @st.cache_data
 def load_data():
-    df = pd.read_csv('Gold Price.csv')
+    df = pd.read_csv('Gold Price_MYR.csv')
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values('Date')
     return df
@@ -30,7 +30,7 @@ def load_data():
 df = load_data()
 
 # App title and description
-st.title("🥇 Daily Gold Price Prediction & Analytics Dashboard")
+st.title("🥇 Daily Gold Price Prediction & Analytics Dashboard (MYR)")
 st.write("This application predicts the daily closing price of gold based on intra-day trading metrics and provides interactive historical market analysis.")
 
 # --- SIDEBAR: USER INPUTS ---
@@ -43,9 +43,10 @@ st.sidebar.markdown("---")
 st.sidebar.header("2. Input Market Features")
 
 def user_input_features():
-    Open_price = st.sidebar.number_input('Open Price', min_value=20000.0, max_value=150000.0, value=136143.0)
-    High_price = st.sidebar.number_input('High Price', min_value=20000.0, max_value=150000.0, value=137037.0)
-    Low_price = st.sidebar.number_input('Low Price', min_value=20000.0, max_value=150000.0, value=135525.0)
+    # UPDATED: Scaled down for MYR
+    Open_price = st.sidebar.number_input('Open Price (MYR)', min_value=1000.0, max_value=15000.0, value=7215.0)
+    High_price = st.sidebar.number_input('High Price (MYR)', min_value=1000.0, max_value=15000.0, value=7262.0)
+    Low_price = st.sidebar.number_input('Low Price (MYR)', min_value=1000.0, max_value=15000.0, value=7182.0)
     Volume = st.sidebar.number_input('Trading Volume', min_value=0.0, max_value=150000.0, value=51877.0)
 
     data = {
@@ -73,7 +74,8 @@ with col1:
     scaled_input = scaler.transform(input_df)
     main_prediction = active_model.predict(scaled_input)[0]
     
-    st.success(f"### Estimated Close Price: ₹{main_prediction:,.2f} (INR)")
+    # UPDATED: Formatted for RM
+    st.success(f"### Estimated Close Price: RM {main_prediction:,.2f}")
         
     st.markdown("---")
     
@@ -88,15 +90,15 @@ with col1:
             comparison_data[name] = mod.predict(scaled_input)[0]
             
         # Create a dataframe for the table
-        comp_df = pd.DataFrame(list(comparison_data.items()), columns=['Model', 'Predicted Price (INR)'])
+        comp_df = pd.DataFrame(list(comparison_data.items()), columns=['Model', 'Predicted Price (MYR)'])
         comp_df.set_index('Model', inplace=True)
         
         # Display ONLY the beautifully formatted raw numbers
-        st.dataframe(comp_df.style.format("₹{:,.2f}"), use_container_width=True)
+        st.dataframe(comp_df.style.format("RM {:,.2f}"), use_container_width=True)
 
 # RIGHT COLUMN: Interactive Historical Chart
 with col2:
-    st.subheader('📈 Interactive Historical Trend')
+    st.subheader('📈 Interactive Historical Trend (MYR)')
     st.write("Filter the historical chart by typing exact dates or using the drag bar.")
     
     # --- ADVANCED INTERACTIVE DATE FILTERING ---

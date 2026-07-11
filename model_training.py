@@ -13,8 +13,8 @@ import joblib
 # ==========================================
 # 1. LOAD AND PREPARE DATA
 # ==========================================
-print("Loading data...")
-df = pd.read_csv('Gold Price.csv')
+print("Loading MYR data...")
+df = pd.read_csv('Gold Price_MYR.csv')
 
 # Data Preparation
 df['Date'] = pd.to_datetime(df['Date'])
@@ -43,7 +43,7 @@ models = {
 # ==========================================
 # 3. EVALUATION
 # ==========================================
-print("\n--- Model Performance ---")
+print("\n--- Model Performance (MYR) ---")
 results = {}
 for name, model in models.items():
     model.fit(X_train_scaled, y_train)
@@ -68,13 +68,10 @@ print("✅ Success! All models and the scaler have been saved as .pkl files.")
 # 5. ADVANCED EVALUATION VISUALS
 # ==========================================
 print("\nGenerating Advanced Evaluation Visuals...")
-
-# Set professional visual style 
 sns.set_theme(style="whitegrid")
 
-# --- VISUAL A: Residual Analysis Plot (Linear Regression) ---
+# --- VISUAL A: Residual Analysis Plot (Figure 7) ---
 print("Generating Residual Plot...")
-# Predict specifically with the Linear Regression model
 lr_model = models['Linear Regression']
 y_pred_lr = lr_model.predict(X_test_scaled)
 residuals = y_test - y_pred_lr
@@ -83,14 +80,14 @@ plt.figure(figsize=(8, 5))
 sns.histplot(residuals, kde=True, color='teal', bins=40)
 plt.axvline(x=0, color='red', linestyle='--', linewidth=2)
 plt.title('Residual Error Distribution (Linear Regression)', fontsize=14, fontweight='bold')
-plt.xlabel('Prediction Error (Actual Price - Predicted Price)', fontsize=12)
+# Updated to say MYR!
+plt.xlabel('Prediction Error (Actual Price - Predicted Price) [MYR]', fontsize=12)
 plt.ylabel('Frequency', fontsize=12)
 plt.savefig('residual_plot.png', dpi=300, bbox_inches='tight')
 plt.close()
 
-# --- VISUAL B: Feature Importance Bar Chart (Random Forest) ---
+# --- VISUAL B: Feature Importance Bar Chart (Figure 8) ---
 print("Generating Feature Importance Chart...")
-# Extract importance metrics from the Random Forest model
 feature_importance = pd.DataFrame({
     'Feature': ['Open', 'High', 'Low', 'Volume'],
     'Importance': models['Random Forest'].feature_importances_
