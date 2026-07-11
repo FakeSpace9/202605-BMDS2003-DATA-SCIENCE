@@ -3,7 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # ==========================================
-# 1. LOAD AND PREPARE DATA
+# 1. LOAD AND PREPARE DATA (ORIGINAL INR)
 # ==========================================
 print("Loading data...")
 df = pd.read_csv('Gold Price.csv')
