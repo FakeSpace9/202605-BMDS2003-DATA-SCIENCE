@@ -1,149 +1,81 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import numpy as np
 
-# Set page layout to wide for a better dashboard look
-st.set_page_config(layout="wide", page_title="Gold Price Predictor")
-
-# 1. Load the trained models and scaler safely
+# Load all 4 trained models
 @st.cache_resource
-def load_ml_assets():
-    scaler = joblib.load('scaler.pkl')
+def load_models():
     models = {
-        "Linear Regression (Baseline)": joblib.load('model_lr.pkl'),
-        "Decision Tree": joblib.load('model_dt.pkl'),
-        "Random Forest": joblib.load('model_rf.pkl'),
-        "Gradient Boosting": joblib.load('model_gb.pkl')
+        "Linear Regression (Baseline)": joblib.load('baseline_linear_regression.pkl'),
+        "Decision Tree": joblib.load('decision_tree_regressor.pkl'),
+        "Random Forest": joblib.load('random_forest_regressor.pkl'),
+        "Gradient Boosting": joblib.load('gradient_boosting_regressor.pkl')
     }
-    return scaler, models
+    return models
 
-scaler, models = load_ml_assets()
+models = load_models()
 
-# Cache the data loading so the app runs faster
-@st.cache_data
-def load_data():
-    df = pd.read_csv('Gold Price.csv')
-    df['Date'] = pd.to_datetime(df['Date'])
-    df = df.sort_values('Date')
-    return df
+st.set_page_config(layout="wide")
+st.title("Seoul Bike Sharing Demand Prediction")
+st.write("Compare predictions across four different machine learning models.")
 
-df = load_data()
+# --- Sidebar Inputs ---
+st.sidebar.header("Input Environmental Factors")
 
-# App title and description
-st.title("🥇 Daily Gold Price Prediction & Analytics Dashboard")
-st.write("This application predicts the daily closing price of gold based on intra-day trading metrics and provides interactive historical market analysis.")
+hour = st.sidebar.slider("Hour of Day", 0, 23, 12)
+temp = st.sidebar.number_input("Temperature (°C)", -20.0, 40.0, 15.0)
+humidity = st.sidebar.slider("Humidity (%)", 0, 100, 50)
+wind_speed = st.sidebar.number_input("Wind Speed (m/s)", 0.0, 10.0, 1.5)
+visibility = st.sidebar.number_input("Visibility (10m)", 0, 2000, 1000)
+solar_rad = st.sidebar.number_input("Solar Radiation (MJ/m2)", 0.0, 4.0, 1.0)
+rainfall = st.sidebar.number_input("Rainfall (mm)", 0.0, 40.0, 0.0)
+snowfall = st.sidebar.number_input("Snowfall (cm)", 0.0, 10.0, 0.0)
 
-# --- SIDEBAR: USER INPUTS ---
-st.sidebar.header("1. Select Machine Learning Model")
-# Let the user choose the model
-selected_model_name = st.sidebar.selectbox("Active Prediction Model:", list(models.keys()))
-active_model = models[selected_model_name]
+seasons = st.sidebar.selectbox("Season", ["Spring", "Summer", "Autumn", "Winter"])
+season_map = {"Spring": 1, "Summer": 2, "Autumn": 0, "Winter": 3} 
 
-st.sidebar.markdown("---")
-st.sidebar.header("2. Input Market Features")
+holiday = st.sidebar.selectbox("Holiday", ["No Holiday", "Holiday"])
+holiday_map = {"No Holiday": 1, "Holiday": 0} 
 
-def user_input_features():
-    Open_price = st.sidebar.number_input('Open Price', min_value=20000.0, max_value=150000.0, value=136143.0)
-    High_price = st.sidebar.number_input('High Price', min_value=20000.0, max_value=150000.0, value=137037.0)
-    Low_price = st.sidebar.number_input('Low Price', min_value=20000.0, max_value=150000.0, value=135525.0)
-    Volume = st.sidebar.number_input('Trading Volume', min_value=0.0, max_value=150000.0, value=51877.0)
+func_day = st.sidebar.selectbox("Functioning Day", ["Yes", "No"])
+func_map = {"Yes": 1, "No": 0}
 
-    data = {
-        'Open': Open_price,
-        'High': High_price,
-        'Low': Low_price,
-        'Volume': Volume
-    }
-    return pd.DataFrame(data, index=[0])
+month = st.sidebar.slider("Month", 1, 12, 6)
+day_of_week = st.sidebar.slider("Day of Week (0=Mon, 6=Sun)", 0, 6, 2)
 
-input_df = user_input_features()
-
-# --- MAIN PAGE LAYOUT ---
-col1, col2 = st.columns([1, 2])
-
-# LEFT COLUMN: Prediction Engine
-with col1:
-    st.subheader(f'🔮 Price Prediction ({selected_model_name})')
-    st.write("Current Input Parameters:")
+# --- Prediction Logic ---
+if st.button("Predict Bike Demand", type="primary"):
     
-    # Format the dataframe display
-    st.dataframe(input_df, use_container_width=True)
+    input_data = pd.DataFrame({
+        'Hour': [hour],
+        'Temperature(°C)': [temp],
+        'Humidity(%)': [humidity],
+        'Wind speed (m/s)': [wind_speed],
+        'Visibility (10m)': [visibility],
+        'Dew point temperature(°C)': [temp - ((100 - humidity)/5)],
+        'Solar Radiation (MJ/m2)': [solar_rad],
+        'Rainfall(mm)': [rainfall],
+        'Snowfall (cm)': [snowfall],
+        'Seasons': [season_map[seasons]],
+        'Holiday': [holiday_map[holiday]],
+        'Functioning Day': [func_map[func_day]],
+        'Month': [month],
+        'DayOfWeek': [day_of_week]
+    })
     
-    # PREDICTION LOGIC
-    scaled_input = scaler.transform(input_df)
-    main_prediction = active_model.predict(scaled_input)[0]
+    st.markdown("### Model Predictions")
     
-    st.success(f"### Estimated Close Price: ₹{main_prediction:,.2f} (INR)")
+    cols = st.columns(4)
+    
+    for idx, (model_name, model) in enumerate(models.items()):
+        # The model now predicts the LOG of the bike count
+        log_pred = model.predict(input_data)[0]
         
-    st.markdown("---")
-    
-    # --- MODEL COMPARISON FEATURE (TABLE ONLY) ---
-    st.subheader("⚖️ Model Comparison")
-    compare_toggle = st.toggle("Compare all 4 algorithms")
-    
-    if compare_toggle:
-        # Calculate predictions for all models
-        comparison_data = {}
-        for name, mod in models.items():
-            comparison_data[name] = mod.predict(scaled_input)[0]
-            
-        # Create a dataframe for the table
-        comp_df = pd.DataFrame(list(comparison_data.items()), columns=['Model', 'Predicted Price (INR)'])
-        comp_df.set_index('Model', inplace=True)
+        # We must REVERSE the log transformation to get actual bikes
+        raw_pred = np.expm1(log_pred)
+        final_pred = max(0, int(np.round(raw_pred)))
         
-        # Display ONLY the beautifully formatted raw numbers
-        st.dataframe(comp_df.style.format("₹{:,.2f}"), use_container_width=True)
-
-# RIGHT COLUMN: Interactive Historical Chart
-with col2:
-    st.subheader('📈 Interactive Historical Trend')
-    st.write("Filter the historical chart by typing exact dates or using the drag bar.")
-    
-    # --- ADVANCED INTERACTIVE DATE FILTERING ---
-    min_date = df['Date'].min().date()
-    max_date = df['Date'].max().date()
-    
-    if 'start_input' not in st.session_state:
-        st.session_state.start_input = pd.to_datetime('2014-01-01').date()
-        st.session_state.end_input = max_date
-        st.session_state.slider_dates = (pd.to_datetime('2014-01-01').date(), max_date)
-
-    def sync_from_inputs():
-        start = st.session_state.start_input
-        end = st.session_state.end_input
-        
-        if start is None or end is None:
-            return
-            
-        if start > end:
-            st.toast("⚠️ Error: Start Date cannot be after End Date. Dates automatically adjusted.", icon="❌")
-            st.session_state.end_input = start
-            st.session_state.slider_dates = (start, start)
-        else:
-            st.session_state.slider_dates = (start, end)
-
-    def sync_from_slider():
-        st.session_state.start_input = st.session_state.slider_dates[0]
-        st.session_state.end_input = st.session_state.slider_dates[1]
-        
-    col2_a, col2_b = st.columns(2)
-    with col2_a:
-        st.date_input("Type Start Date:", key="start_input", min_value=min_date, max_value=max_date, on_change=sync_from_inputs)
-    with col2_b:
-        st.date_input("Type End Date:", key="end_input", min_value=min_date, max_value=max_date, on_change=sync_from_inputs)
-
-    st.slider(
-        "Or drag to select date range:",
-        min_value=min_date,
-        max_value=max_date,
-        key="slider_dates",
-        format="YYYY-MM-DD",
-        on_change=sync_from_slider
-    )
-    
-    final_start = st.session_state.slider_dates[0]
-    final_end = st.session_state.slider_dates[1]
-    filtered_df = df[(df['Date'].dt.date >= final_start) & (df['Date'].dt.date <= final_end)]
-    
-    chart_data = filtered_df.set_index('Date')[['Price']]
-    st.line_chart(chart_data)
+        with cols[idx]:
+            st.info(f"**{model_name}**")
+            st.metric(label="Predicted Bikes", value=final_pred)
