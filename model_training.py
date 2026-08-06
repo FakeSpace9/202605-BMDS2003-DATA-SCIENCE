@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score # Added mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 import joblib
 
@@ -48,10 +48,16 @@ results = {}
 for name, model in models.items():
     model.fit(X_train_scaled, y_train)
     y_pred = model.predict(X_test_scaled)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    
+    # Calculate Log RMSE and Log MAE (evaluating on the log scale)
+    log_rmse = np.sqrt(mean_squared_error(np.log(y_test), np.log(y_pred)))
+    log_mae = mean_absolute_error(np.log(y_test), np.log(y_pred))
     r2 = r2_score(y_test, y_pred)
-    results[name] = {'RMSE': rmse, 'R2': r2}
-    print(f"{name} - RMSE: {rmse:.2f}, R2: {r2:.4f}")
+    
+    results[name] = {'Log RMSE': log_rmse, 'Log MAE': log_mae, 'R2': r2}
+    
+    # Print exactly in the requested format
+    print(f"{name} -> Log RMSE: {log_rmse:.4f} | Log MAE: {log_mae:.4f} | R2: {r2:.4f}")
 
 # ==========================================
 # 4. SAVE MODELS & SCALER
@@ -80,7 +86,6 @@ plt.figure(figsize=(8, 5))
 sns.histplot(residuals, kde=True, color='teal', bins=40)
 plt.axvline(x=0, color='red', linestyle='--', linewidth=2)
 plt.title('Residual Error Distribution (Linear Regression)', fontsize=14, fontweight='bold')
-# Updated to say MYR!
 plt.xlabel('Prediction Error (Actual Price - Predicted Price) [MYR]', fontsize=12)
 plt.ylabel('Frequency', fontsize=12)
 plt.savefig('residual_plot.png', dpi=300, bbox_inches='tight')
