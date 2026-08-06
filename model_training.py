@@ -40,6 +40,7 @@ full_df = pd.concat([train_df, test_df], ignore_index=True)
 
 # 2. Use the train_test_split function to handle the shuffling and assigning
 X_train, X_test, y_train, y_test = train_test_split(
+    
     full_df[FEATURES], 
     full_df[TARGET], 
     test_size=0.2, 

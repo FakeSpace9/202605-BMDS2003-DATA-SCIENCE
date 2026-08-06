@@ -11,7 +11,7 @@ def load_ml_assets():
     scaler = joblib.load('scaler.pkl')
     models = {
         "Linear Regression (Baseline)": joblib.load('model_lr.pkl'),
-        "Decision Tree": joblib.load('model_dt.pkl'),
+        "Ridge Regression": joblib.load('model_ridge.pkl'),
         "Random Forest": joblib.load('model_rf.pkl'),
         "Gradient Boosting": joblib.load('model_gb.pkl')
     }
@@ -22,7 +22,7 @@ scaler, models = load_ml_assets()
 # Cache the data loading so the app runs faster
 @st.cache_data
 def load_data():
-    df = pd.read_csv('Gold Price.csv')
+    df = pd.read_csv('Gold_Price.csv')
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values('Date')
     return df
@@ -79,7 +79,7 @@ with col1:
     
     # --- MODEL COMPARISON FEATURE (TABLE ONLY) ---
     st.subheader("⚖️ Model Comparison")
-    compare_toggle = st.toggle("Compare all 4 algorithms")
+    compare_toggle = st.checkbox("Compare all models")
     
     if compare_toggle:
         # Calculate predictions for all models

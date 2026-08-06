@@ -85,40 +85,68 @@ df['Volatility_7'] = df['Price'].rolling(window=7).std()
 df = df.dropna().reset_index(drop=True)
 
 # ------------------------------------------------------------------
-# 8. Feature scaling (example: Min-Max scaling numeric features)
-#    Only fit on your training split in practice — shown here on
-#    the full set for illustration.
+# 8. Feature scaling (Min-Max scaling numeric features)
+#    Fit the scaler only on the training split to avoid leakage.
 # ------------------------------------------------------------------
 from sklearn.preprocessing import MinMaxScaler
+import joblib
 
-feature_cols = ['Open', 'High', 'Low', 'Volume', 'Chg%',
-                 'Price_Range', 'Price_Change',
-                 'Price_Lag1', 'Price_Lag2', 'MA_7', 'MA_30', 'Volatility_7']
-
-scaler = MinMaxScaler()
-df_scaled = df.copy()
-df_scaled[feature_cols] = scaler.fit_transform(df[feature_cols])
+# Choose a compact set of numeric features that downstream models and
+# the Streamlit app will use (keep consistent across training and app):
+scaler_feature_cols = ['Open', 'High', 'Low', 'Volume']
 
 # ------------------------------------------------------------------
-# 9. Train-test split (time-series aware: no shuffling!)
+# 9. Train-test split (chronological 80/20 split within each year)
 # ------------------------------------------------------------------
 split_ratio = 0.8
-split_idx = int(len(df_scaled) * split_ratio)
 
-train_df = df_scaled.iloc[:split_idx]
-test_df = df_scaled.iloc[split_idx:]
+train_frames = []
+test_frames = []
+
+# Group by year and apply the 80/20 split to each year's data
+for year, group in df.groupby('Year'):
+    # Determine the split index for the current year
+    split_idx = int(len(group) * split_ratio)
+    
+    # Append the first 80% of the year to train, and the last 20% to test
+    train_frames.append(group.iloc[:split_idx])
+    test_frames.append(group.iloc[split_idx:])
+
+# Concatenate the lists of DataFrames back into single train and test DataFrames
+train_df = pd.concat(train_frames).reset_index(drop=True)
+test_df = pd.concat(test_frames).reset_index(drop=True)
 
 print("\nTrain shape:", train_df.shape)
 print("Test shape:", test_df.shape)
 
+# Fit scaler on training partition only and apply to both sets
+scaler = MinMaxScaler()
+
+# Ensure scaler columns are numeric
+train_df[scaler_feature_cols] = train_df[scaler_feature_cols].apply(pd.to_numeric, errors='coerce')
+test_df[scaler_feature_cols] = test_df[scaler_feature_cols].apply(pd.to_numeric, errors='coerce')
+
+# Fit and transform
+scaler.fit(train_df[scaler_feature_cols])
+train_df_scaled = train_df.copy()
+test_df_scaled = test_df.copy()
+
+train_df_scaled[scaler_feature_cols] = scaler.transform(train_df[scaler_feature_cols])
+test_df_scaled[scaler_feature_cols] = scaler.transform(test_df[scaler_feature_cols])
+
 # ------------------------------------------------------------------
-# 10. Save cleaned dataset
+# 10. Save cleaned dataset and fitted scaler
 # ------------------------------------------------------------------
+# Save the cleaned (unscaled) full dataset for reproducibility
 df.to_csv('Gold_Price_cleaned.csv', index=False)
-train_df.to_csv('Gold_Price_train.csv', index=False)
-test_df.to_csv('Gold_Price_test.csv', index=False)
+# Save the scaled training and test splits used for modelling
+train_df_scaled.to_csv('Gold_Price_train.csv', index=False)
+test_df_scaled.to_csv('Gold_Price_test.csv', index=False)
+# Persist the fitted scaler for use in the Streamlit app
+joblib.dump(scaler, 'scaler.pkl')
 
 print("\nPreprocessing complete. Files saved:")
 print(" - Gold_Price_cleaned.csv (full cleaned + engineered features)")
-print(" - Gold_Price_train.csv")
-print(" - Gold_Price_test.csv")
+print(" - Gold_Price_train.csv (scaled training split)")
+print(" - Gold_Price_test.csv (scaled test split)")
+print(" - scaler.pkl (fitted MinMaxScaler)")
