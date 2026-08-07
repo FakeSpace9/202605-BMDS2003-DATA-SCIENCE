@@ -122,7 +122,7 @@ from sklearn.model_selection import train_test_split
 
 train_df, test_df = train_test_split(
     df,
-    test_size=0.30,
+    test_size=0.40,
     shuffle=False,  # Shuffle within each year to avoid time-based bias
     random_state=42
 )
