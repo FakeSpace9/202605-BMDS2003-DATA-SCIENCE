@@ -9,19 +9,17 @@ from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
 import joblib
 from sklearn.preprocessing import StandardScaler
-
+from utils import load_raw_dataset
 # ------------------------------------------------------------------
 # 1. Load data
 # ------------------------------------------------------------------
 current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
-
-input_path = project_root / "data" / "raw" / "Gold_Price.csv"
 output_dir = project_root / "data" / "processed"
 
 
 # 2. Load the data
-df = pd.read_csv(input_path)
+df = load_raw_dataset()
 
 print("Initial shape:", df.shape)
 print(df.head())
@@ -91,8 +89,8 @@ df['Price_Lag2'] = df['Price'].shift(2) # two days before
 # Rolling statistics (moving averages / volatility)
 df['MA_7'] = df['Price'].rolling(window=7).mean() # 7 day moving average
 df['MA_30'] = df['Price'].rolling(window=30).mean() # 30 day moving average
-df['Volatility_7'] = df['Price'].rolling(window=7).std() # 7 day rolling std dev (volatility)
-df['Volatility_30'] = df['Price'].rolling(window=30).std() # 30 day rolling std dev (volatility)
+df['Volatility_7'] = df['Price'].shift(1).rolling(window=7).std() # 7 day rolling std dev (volatility)
+df['Volatility_30'] = df['Price'].shift(1).rolling(window=30).std() # 30 day rolling std dev (volatility)
 
 # Drop rows with NaN created by lag/rolling features (first few rows)
 df = df.dropna().reset_index(drop=True)
@@ -108,7 +106,7 @@ scaler_feature_cols = ['Open', 'High', 'Low', 'Volume']
 # ------------------------------------------------------------------
 # 9. Train-test split (chronological 80/20 split within each year)
 # ------------------------------------------------------------------
-split_ratio = 0.8
+
 
 train_frames = []
 test_frames = []
@@ -119,7 +117,7 @@ from sklearn.model_selection import train_test_split
 train_df, test_df = train_test_split(
     df,
     test_size=0.2,
-    shuffle=True,
+    shuffle=False,  # Shuffle within each year to avoid time-based bias
     random_state=42
 )
 train_df = train_df.sort_values('Date').reset_index(drop=True)
@@ -158,4 +156,4 @@ print("\nPreprocessing complete. Files saved:")
 print(" - Gold_Price_cleaned.csv (full cleaned + engineered features)")
 print(" - Gold_Price_train.csv (scaled training split)")
 print(" - Gold_Price_test.csv (scaled test split)")
-print(" - scaler.pkl (fitted MinMaxScaler)")
+print(" - scaler.pkl (fitted StandardScaler)")
