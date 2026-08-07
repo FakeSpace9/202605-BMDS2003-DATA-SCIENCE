@@ -26,8 +26,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 # ------------------------------------------------------------------
 # 1. Load preprocessed train/test data
 # ------------------------------------------------------------------
-train_df = pd.read_csv('Gold_Price_train.csv')
-test_df = pd.read_csv('Gold_Price_test.csv')
+df = pd.read_csv('Gold_Price_cleaned.csv')
+
 
 # Dropped: 'Price_Lag1', 'Price_Lag2', and 'MA_7' to lower R2
 FEATURES = ['Volume','Month', 'Day', 'Volatility_7']
@@ -35,21 +35,19 @@ TARGET = 'Price'
 
 from sklearn.model_selection import train_test_split
 
-# 1. Combine the data to perform a fresh randomized split
-full_df = pd.concat([train_df, test_df], ignore_index=True)
 
 # 2. Use the train_test_split function to handle the shuffling and assigning
 X_train, X_test, y_train, y_test = train_test_split(
     
-    full_df[FEATURES], 
-    full_df[TARGET], 
+    df[FEATURES], 
+    df[TARGET], 
     test_size=0.2, 
     shuffle=True, 
     random_state=1
 )
 
 # 3. Recreate test_df so your plotting code at the bottom of the script still works
-test_df = full_df.loc[X_test.index].copy()
+test_df = df.loc[X_test.index].copy()
 
 print("Train size:", X_train.shape, " Test size:", X_test.shape)
 

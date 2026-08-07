@@ -104,17 +104,16 @@ train_frames = []
 test_frames = []
 
 # Group by year and apply the 80/20 split to each year's data
-for year, group in df.groupby('Year'):
-    # Determine the split index for the current year
-    split_idx = int(len(group) * split_ratio)
-    
-    # Append the first 80% of the year to train, and the last 20% to test
-    train_frames.append(group.iloc[:split_idx])
-    test_frames.append(group.iloc[split_idx:])
+from sklearn.model_selection import train_test_split
 
-# Concatenate the lists of DataFrames back into single train and test DataFrames
-train_df = pd.concat(train_frames).reset_index(drop=True)
-test_df = pd.concat(test_frames).reset_index(drop=True)
+train_df, test_df = train_test_split(
+    df,
+    test_size=0.2,
+    shuffle=True,
+    random_state=42
+)
+train_df = train_df.sort_values('Date').reset_index(drop=True)
+test_df = test_df.sort_values('Date').reset_index(drop=True)
 
 print("\nTrain shape:", train_df.shape)
 print("Test shape:", test_df.shape)
