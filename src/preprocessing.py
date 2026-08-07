@@ -5,11 +5,23 @@ CRISP-DM: Data Preparation phase
 
 import pandas as pd
 import numpy as np
+from pathlib import Path
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+from sklearn.preprocessing import StandardScaler
 
 # ------------------------------------------------------------------
 # 1. Load data
 # ------------------------------------------------------------------
-df = pd.read_csv('Gold_Price.csv')
+current_dir = Path(__file__).resolve().parent
+project_root = current_dir.parent
+
+input_path = project_root / "data" / "raw" / "Gold_Price.csv"
+output_dir = project_root / "data" / "processed"
+
+
+# 2. Load the data
+df = pd.read_csv(input_path)
 
 print("Initial shape:", df.shape)
 print(df.head())
@@ -73,13 +85,14 @@ df['Price_Range'] = df['High'] - df['Low']
 df['Price_Change'] = df['Price'] - df['Open']
 
 # Lag features (previous day's price) — useful for regression/time-series
-df['Price_Lag1'] = df['Price'].shift(1)
-df['Price_Lag2'] = df['Price'].shift(2)
+df['Price_Lag1'] = df['Price'].shift(1) # one day before 
+df['Price_Lag2'] = df['Price'].shift(2) # two days before
 
 # Rolling statistics (moving averages / volatility)
-df['MA_7'] = df['Price'].rolling(window=7).mean()
-df['MA_30'] = df['Price'].rolling(window=30).mean()
-df['Volatility_7'] = df['Price'].rolling(window=7).std()
+df['MA_7'] = df['Price'].rolling(window=7).mean() # 7 day moving average
+df['MA_30'] = df['Price'].rolling(window=30).mean() # 30 day moving average
+df['Volatility_7'] = df['Price'].rolling(window=7).std() # 7 day rolling std dev (volatility)
+df['Volatility_30'] = df['Price'].rolling(window=30).std() # 30 day rolling std dev (volatility)
 
 # Drop rows with NaN created by lag/rolling features (first few rows)
 df = df.dropna().reset_index(drop=True)
@@ -88,9 +101,6 @@ df = df.dropna().reset_index(drop=True)
 # 8. Feature scaling (Min-Max scaling numeric features)
 #    Fit the scaler only on the training split to avoid leakage.
 # ------------------------------------------------------------------
-from sklearn.preprocessing import MinMaxScaler
-import joblib
-
 # Choose a compact set of numeric features that downstream models and
 # the Streamlit app will use (keep consistent across training and app):
 scaler_feature_cols = ['Open', 'High', 'Low', 'Volume']
@@ -119,7 +129,7 @@ print("\nTrain shape:", train_df.shape)
 print("Test shape:", test_df.shape)
 
 # Fit scaler on training partition only and apply to both sets
-scaler = MinMaxScaler()
+scaler = StandardScaler()
 
 # Ensure scaler columns are numeric
 train_df[scaler_feature_cols] = train_df[scaler_feature_cols].apply(pd.to_numeric, errors='coerce')
@@ -137,12 +147,12 @@ test_df_scaled[scaler_feature_cols] = scaler.transform(test_df[scaler_feature_co
 # 10. Save cleaned dataset and fitted scaler
 # ------------------------------------------------------------------
 # Save the cleaned (unscaled) full dataset for reproducibility
-df.to_csv('Gold_Price_cleaned.csv', index=False)
+df.to_csv(output_dir / "Gold_Price_cleaned.csv", index=False)
 # Save the scaled training and test splits used for modelling
-train_df_scaled.to_csv('Gold_Price_train.csv', index=False)
-test_df_scaled.to_csv('Gold_Price_test.csv', index=False)
+train_df_scaled.to_csv(output_dir / "Gold_Price_train.csv", index=False)
+test_df_scaled.to_csv(output_dir / "Gold_Price_test.csv", index=False)
 # Persist the fitted scaler for use in the Streamlit app
-joblib.dump(scaler, 'scaler.pkl')
+joblib.dump(scaler, project_root / "prototype" / "scaler.pkl")
 
 print("\nPreprocessing complete. Files saved:")
 print(" - Gold_Price_cleaned.csv (full cleaned + engineered features)")
