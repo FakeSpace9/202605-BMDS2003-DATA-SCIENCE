@@ -73,24 +73,32 @@ for col in ['Price', 'Volume', 'Chg%']:
 # ------------------------------------------------------------------
 # 7. Feature engineering (common for gold-price / time-series models)
 # ------------------------------------------------------------------
-df['Year'] = df['Date'].dt.year
-df['Month'] = df['Date'].dt.month
+# Lags
+df["Price_Lag1"] = df["Price"].shift(1)
+df["Price_Lag2"] = df["Price"].shift(2)
+df["Volume_Lag1"] = df["Volume"].shift(1)
+
+# Rolling means & volatilities (shifted to avoid leakage)
+df["MA_7"] = df["Price"].shift(1).rolling(7).mean()
+df["MA_30"] = df["Price"].shift(1).rolling(30).mean()
+df["Volatility_7"] = df["Price"].shift(1).rolling(7).std()
+df["Volatility_30"] = df["Price"].shift(1).rolling(30).std()
+
+# Daily returns (lagged)
+df["daily_return_lag1"] = df["Price_Lag1"] / df["Price_Lag2"] - 1
+df["daily_return_lag2"] = df["Price_Lag2"] / df["Price"].shift(3) - 1
+
+# Price range & change from previous day (shifted by 1)
+df["Price_Range"] = df["High"] - df["Low"]
+df["Price_Change"] = df["Open"] - df["Price"]  # Close = Price column
+df["Price_Range_Lag1"] = df["Price_Range"].shift(1)
+df["Price_Change_Lag1"] = df["Price_Change"].shift(1)
+
+# Time features
+df["Year"] = df["Date"].dt.year
+df["Month"] = df["Date"].dt.month
+df["DayOfWeek"] = df["Date"].dt.dayofweek
 df['Day'] = df['Date'].dt.day
-df['DayOfWeek'] = df['Date'].dt.dayofweek     # 0=Mon ... 6=Sun
-
-# Daily price range and body (High-Low volatility, Open-Close move)
-df['Price_Range'] = df['High'] - df['Low']
-df['Price_Change'] = df['Price'] - df['Open']
-
-# Lag features (previous day's price) — useful for regression/time-series
-df['Price_Lag1'] = df['Price'].shift(1) # one day before 
-df['Price_Lag2'] = df['Price'].shift(2) # two days before
-
-# Rolling statistics (moving averages / volatility)
-df['MA_7'] = df['Price'].rolling(window=7).mean() # 7 day moving average
-df['MA_30'] = df['Price'].rolling(window=30).mean() # 30 day moving average
-df['Volatility_7'] = df['Price'].shift(1).rolling(window=7).std() # 7 day rolling std dev (volatility)
-df['Volatility_30'] = df['Price'].shift(1).rolling(window=30).std() # 30 day rolling std dev (volatility)
 
 # Drop rows with NaN created by lag/rolling features (first few rows)
 df = df.dropna().reset_index(drop=True)
@@ -104,10 +112,8 @@ df = df.dropna().reset_index(drop=True)
 scaler_feature_cols = ['Open', 'High', 'Low', 'Volume']
 
 # ------------------------------------------------------------------
-# 9. Train-test split (chronological 80/20 split within each year)
+# 9. Train-test split
 # ------------------------------------------------------------------
-
-
 train_frames = []
 test_frames = []
 
@@ -116,7 +122,7 @@ from sklearn.model_selection import train_test_split
 
 train_df, test_df = train_test_split(
     df,
-    test_size=0.2,
+    test_size=0.30,
     shuffle=False,  # Shuffle within each year to avoid time-based bias
     random_state=42
 )
