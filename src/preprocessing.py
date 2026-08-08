@@ -43,11 +43,16 @@ print(df.isnull().sum())
 print("\nZero values per column before drop:")
 print((df == 0).sum())
 
-# Replace all 0s with NaN, then drop any row containing NaN in any column.
-# This efficiently drops both natively empty rows and rows containing 0.
-df = df.replace(0, np.nan).dropna(how='any').reset_index(drop=True)
-
-print(f"\nDataset shape after dropping empty and 0-value rows: {df.shape}")
+# Only Price/Open/High/Low being 0 is a genuine data error (gold price
+# can't legitimately be 0). Volume==0 or Chg%==0 can be real (a quiet
+# trading day), so we don't nuke those to NaN.
+price_cols = ['Price', 'Open', 'High', 'Low']
+df[price_cols] = df[price_cols].replace(0, np.nan)
+before = len(df)
+df = df.dropna(subset=price_cols).reset_index(drop=True)
+print(f"\nDropped {before - len(df)} rows with missing/zero price fields "
+      f"(these are true data errors, safe to remove -- unlike statistical "
+      f"outliers, they don't carry information).")
 
 # ------------------------------------------------------------------
 # 4. Check and remove duplicate rows / duplicate dates
@@ -61,6 +66,7 @@ df = df.drop_duplicates(subset='Date', keep='first').reset_index(drop=True)
 numeric_cols = ['Price', 'Open', 'High', 'Low', 'Volume', 'Chg%']
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors='coerce')
+df = df.dropna(subset=numeric_cols).reset_index(drop=True)
 
 # ------------------------------------------------------------------
 # 6. Outlier detection (IQR method) — flag, don't blindly drop,
@@ -72,26 +78,17 @@ def flag_outliers_iqr(series, factor=1.5):
     lower, upper = q1 - factor * iqr, q3 + factor * iqr
     return (series < lower) | (series > upper)
 
-# Initialize an empty mask of False values
-combined_outlier_mask = pd.Series(False, index=df.index)
-
-for col in ['Price', 'Volume', 'Chg%']:
-    col_outliers = flag_outliers_iqr(df[col])
-    print(f"{col}: {col_outliers.sum()} potential outliers")
-    # Combine the masks using the bitwise OR operator
-    combined_outlier_mask = combined_outlier_mask | col_outliers
-
-print("\n--- Dropped Outlier Rows ---")
-dropped_rows = df[combined_outlier_mask]
-print(dropped_rows.to_string())
-
-# Keep only the rows that are NOT outliers (using the ~ operator)
-df = df[~combined_outlier_mask].reset_index(drop=True)
-# Drop rows where Volume is unrealistically low for a normal trading day
-df = df[df['Volume'] >= 1000].reset_index(drop=True)
-
-print(f"\nTotal rows dropped: {combined_outlier_mask.sum()}")
-print(f"New dataset shape: {df.shape}")
+df['Is_Outlier_Price'] = flag_outliers_iqr(df['Price'])
+df['Is_Outlier_Volume'] = flag_outliers_iqr(df['Volume'])
+df['Is_Outlier_ChgPct'] = flag_outliers_iqr(df['Chg%'])
+df['Is_LowVolume'] = df['Volume'] < 1000
+ 
+print(f"\nFlagged (not dropped) {df['Is_Outlier_Price'].sum()} Price outliers, "
+      f"{df['Is_Outlier_Volume'].sum()} Volume outliers, "
+      f"{df['Is_Outlier_ChgPct'].sum()} Chg% outliers, "
+      f"{df['Is_LowVolume'].sum()} low-volume rows.")
+print("Rows by year among flagged Price outliers:")
+print(df.loc[df['Is_Outlier_Price'], 'Date'].dt.year.value_counts().sort_index())
 
 # ------------------------------------------------------------------
 # 7. Feature engineering (common for gold-price / time-series models)
@@ -100,31 +97,55 @@ print(f"New dataset shape: {df.shape}")
 df["Price_Lag1"] = df["Price"].shift(1)
 df["Price_Lag2"] = df["Price"].shift(2)
 df["Volume_Lag1"] = df["Volume"].shift(1)
-
-# Rolling means & volatilities (shifted to avoid leakage)
+ 
 df["MA_7"] = df["Price"].shift(1).rolling(7).mean()
 df["MA_30"] = df["Price"].shift(1).rolling(30).mean()
 df["Volatility_7"] = df["Price"].shift(1).rolling(7).std()
 df["Volatility_30"] = df["Price"].shift(1).rolling(30).std()
-
-# Daily returns (lagged)
+ 
 df["daily_return_lag1"] = df["Price_Lag1"] / df["Price_Lag2"] - 1
 df["daily_return_lag2"] = df["Price_Lag2"] / df["Price"].shift(3) - 1
-
-# Price range & change from previous day (shifted by 1)
+ 
 df["Price_Range"] = df["High"] - df["Low"]
-df["Price_Change"] = df["Open"] - df["Price"]  # Close = Price column
+df["Price_Change"] = df["Price"] - df["Open"]  # today's move, NOT usable
+                                                # as a same-day predictor
 df["Price_Range_Lag1"] = df["Price_Range"].shift(1)
 df["Price_Change_Lag1"] = df["Price_Change"].shift(1)
-
-# Time features
+ 
+# --- Additional features required by train_linear_regression.py (Chg% target) ---
+# Chg% momentum lags
+df["Chg%_Lag1"] = df["Chg%"].shift(1)
+df["Chg%_Lag2"] = df["Chg%"].shift(2)
+df["Chg%_Lag3"] = df["Chg%"].shift(3)
+ 
+# Volume momentum: yesterday's volume relative to its own recent (10-day) average.
+# >1 means recent volume is running above its local average.
+df["Volume_Momentum"] = df["Volume"].shift(1) / df["Volume"].shift(1).rolling(10).mean()
+ 
+# MA ratio: short vs long moving average (both already computed on lagged price,
+# so no leakage). >1 means short-term average is above long-term average.
+df["MA_Ratio"] = df["MA_7"] / df["MA_30"]
+ 
+# Bollinger %B: where yesterday's price sat within its 20-day Bollinger Band,
+# computed entirely on lagged price so no same-day leakage.
+# 0 = at lower band, 1 = at upper band, <0 or >1 = outside the bands (breakout).
+_bb_mid = df["Price"].shift(1).rolling(20).mean()
+_bb_std = df["Price"].shift(1).rolling(20).std()
+_bb_upper = _bb_mid + 2 * _bb_std
+_bb_lower = _bb_mid - 2 * _bb_std
+df["BB_Status"] = (df["Price"].shift(1) - _bb_lower) / (_bb_upper - _bb_lower)
+ 
 df["Year"] = df["Date"].dt.year
 df["Month"] = df["Date"].dt.month
 df["DayOfWeek"] = df["Date"].dt.dayofweek
-df['Day'] = df['Date'].dt.day
-
-# Drop rows with NaN created by lag/rolling features (first few rows)
+df["Day"] = df["Date"].dt.day
+ 
+# Drop only the leading rows where lag/rolling windows aren't full yet
+before = len(df)
 df = df.dropna().reset_index(drop=True)
+print(f"\nDropped {before - len(df)} leading rows with incomplete lag/rolling windows.")
+print(f"Final cleaned dataset shape: {df.shape}")
+print(f"Date range: {df['Date'].min().date()} -> {df['Date'].max().date()}")
 
 # ------------------------------------------------------------------
 # 8. Feature scaling (Min-Max scaling numeric features)
@@ -140,27 +161,24 @@ scaler_feature_cols = ['Open', 'High', 'Low', 'Volume']
 train_df, test_df = train_test_split(
     df,
     test_size=0.25,
-    shuffle=False,  # Shuffle within each year to avoid time-based bias
+    shuffle=False,  
     random_state=42
 )
 train_df = train_df.sort_values('Date').reset_index(drop=True)
 test_df = test_df.sort_values('Date').reset_index(drop=True)
 
-print("\nTrain shape:", train_df.shape)
-print("Test shape:", test_df.shape)
+print("\nSingle chronological split (for baseline comparison only):")
+print("Train:", train_df.shape, train_df['Date'].min().date(), "->", train_df['Date'].max().date())
+print("Test :", test_df.shape, test_df['Date'].min().date(), "->", test_df['Date'].max().date())
 
 # Fit scaler on training partition only and apply to both sets
 scaler = StandardScaler()
-
-# Ensure scaler columns are numeric
 train_df[scaler_feature_cols] = train_df[scaler_feature_cols].apply(pd.to_numeric, errors='coerce')
 test_df[scaler_feature_cols] = test_df[scaler_feature_cols].apply(pd.to_numeric, errors='coerce')
-
-# Fit and transform
 scaler.fit(train_df[scaler_feature_cols])
+ 
 train_df_scaled = train_df.copy()
 test_df_scaled = test_df.copy()
-
 train_df_scaled[scaler_feature_cols] = scaler.transform(train_df[scaler_feature_cols])
 test_df_scaled[scaler_feature_cols] = scaler.transform(test_df[scaler_feature_cols])
 
