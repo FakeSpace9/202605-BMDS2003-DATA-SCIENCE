@@ -42,7 +42,7 @@ FEATURES = [
     # Rolling volatilities
     "Volatility_7",
     "Volatility_30",
-    
+    "Price_Change_Lag1",
     # Time features
     "Month",
     "DayOfWeek",

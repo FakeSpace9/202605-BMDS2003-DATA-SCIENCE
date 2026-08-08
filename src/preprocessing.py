@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
 import joblib
 from sklearn.preprocessing import StandardScaler
 from utils import load_raw_dataset
@@ -36,12 +37,17 @@ df = df.sort_values('Date').reset_index(drop=True)
 # ------------------------------------------------------------------
 # 3. Check for missing values
 # ------------------------------------------------------------------
-print("\nMissing values per column:")
+print("\nMissing values per column before drop:")
 print(df.isnull().sum())
 
-# If any missing values existed, you could handle them like this
-# (kept here for completeness / marking purposes even if count is 0):
-df = df.ffill().bfill()          # forward/backward fill for time series
+print("\nZero values per column before drop:")
+print((df == 0).sum())
+
+# Replace all 0s with NaN, then drop any row containing NaN in any column.
+# This efficiently drops both natively empty rows and rows containing 0.
+df = df.replace(0, np.nan).dropna(how='any').reset_index(drop=True)
+
+print(f"\nDataset shape after dropping empty and 0-value rows: {df.shape}")
 
 # ------------------------------------------------------------------
 # 4. Check and remove duplicate rows / duplicate dates
@@ -66,9 +72,26 @@ def flag_outliers_iqr(series, factor=1.5):
     lower, upper = q1 - factor * iqr, q3 + factor * iqr
     return (series < lower) | (series > upper)
 
+# Initialize an empty mask of False values
+combined_outlier_mask = pd.Series(False, index=df.index)
+
 for col in ['Price', 'Volume', 'Chg%']:
-    outlier_mask = flag_outliers_iqr(df[col])
-    print(f"{col}: {outlier_mask.sum()} potential outliers")
+    col_outliers = flag_outliers_iqr(df[col])
+    print(f"{col}: {col_outliers.sum()} potential outliers")
+    # Combine the masks using the bitwise OR operator
+    combined_outlier_mask = combined_outlier_mask | col_outliers
+
+print("\n--- Dropped Outlier Rows ---")
+dropped_rows = df[combined_outlier_mask]
+print(dropped_rows.to_string())
+
+# Keep only the rows that are NOT outliers (using the ~ operator)
+df = df[~combined_outlier_mask].reset_index(drop=True)
+# Drop rows where Volume is unrealistically low for a normal trading day
+df = df[df['Volume'] >= 1000].reset_index(drop=True)
+
+print(f"\nTotal rows dropped: {combined_outlier_mask.sum()}")
+print(f"New dataset shape: {df.shape}")
 
 # ------------------------------------------------------------------
 # 7. Feature engineering (common for gold-price / time-series models)
@@ -114,15 +137,9 @@ scaler_feature_cols = ['Open', 'High', 'Low', 'Volume']
 # ------------------------------------------------------------------
 # 9. Train-test split
 # ------------------------------------------------------------------
-train_frames = []
-test_frames = []
-
-# Group by year and apply the 80/20 split to each year's data
-from sklearn.model_selection import train_test_split
-
 train_df, test_df = train_test_split(
     df,
-    test_size=0.40,
+    test_size=0.25,
     shuffle=False,  # Shuffle within each year to avoid time-based bias
     random_state=42
 )
@@ -151,6 +168,7 @@ test_df_scaled[scaler_feature_cols] = scaler.transform(test_df[scaler_feature_co
 # 10. Save cleaned dataset and fitted scaler
 # ------------------------------------------------------------------
 # Save the cleaned (unscaled) full dataset for reproducibility
+output_dir.mkdir(parents=True, exist_ok=True)
 df.to_csv(output_dir / "Gold_Price_cleaned.csv", index=False)
 # Save the scaled training and test splits used for modelling
 train_df_scaled.to_csv(output_dir / "Gold_Price_train.csv", index=False)
