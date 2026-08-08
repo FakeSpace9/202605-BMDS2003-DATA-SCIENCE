@@ -96,6 +96,7 @@ print(df.loc[df['Is_Outlier_Price'], 'Date'].dt.year.value_counts().sort_index()
 # Lags
 df["Price_Lag1"] = df["Price"].shift(1)
 df["Price_Lag2"] = df["Price"].shift(2)
+df["Price_Lag30"] = df["Price"].shift(30)
 df["Volume_Lag1"] = df["Volume"].shift(1)
 
 df["MA_7"] = df["Price"].shift(1).rolling(7).mean()
