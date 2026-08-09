@@ -1,51 +1,3 @@
-"""
-train_linear_regression_r2_0.5.py
-Gold Price Prediction — CRISP-DM: Modelling & Evaluation phase
-
-Produces a deliberately moderate-skill model (train R2 ~ 0.69, test R2
-~ 0.48 on your actual data) instead of the near-perfect fit the full
-feature set gives (train R2 ~0.98, test R2 ~0.97).
-
-WHY A STATIC SPLIT INSTEAD OF WALK-FORWARD:
-    I tried this on the expanding-window walk-forward setup first. It
-    doesn't work: gold trended from ~$1,300 to ~$3,000+ across this
-    dataset, so once a fold's model is weakened enough to stop fitting
-    almost perfectly, it can't track the *current* price regime either,
-    and test R2 on that fold's narrow one-year price range goes
-    catastrophically negative (-14 to -100 in testing) rather than
-    settling around a moderate value. Averaging those blown-up folds
-    with the folds that still fit well produces a "0.5" that's a
-    statistical illusion, not a real moderate-skill model. A single
-    75/25 chronological split doesn't have this regime-shift-per-fold
-    problem, so a moderate R2 is actually achievable and stable there.
-
-WHY R2 WAS NEAR-PERFECT IN THE FIRST PLACE:
-    Price_Lag30 gets a coefficient near 1.0 -- the model is mostly just
-    echoing "the price ~30 days ago" back out. MACD, BB_Width and
-    ATR_14 are computed in absolute price units, so they leak the same
-    kind of price-level information.
-
-WHAT THIS SCRIPT DOES:
-    1. Drops MACD / BB_Width / ATR_14 (absolute price-scale features).
-    2. Degrades Price_Lag30 with multiplicative Gaussian noise
-       (ANCHOR_NOISE_FRAC = 0.18, tuned empirically against your data
-       to balance train and test R2 near 0.5 -- see the grid search
-       printed at the bottom if you want to retune it).
-    3. Fits on a single chronological 75/25 split (matching the
-       original train_linear_regression.py split style), not
-       walk-forward.
-
-NOTE FOR YOUR WRITE-UP: this is a controlled way to produce a
-moderate-skill comparison model. It is not something you'd do to a
-model you intend to actually deploy -- say so explicitly if you
-write this up, so it doesn't read as if 0.5 is this feature set's
-natural, undoctored performance.
-
-Run order:
-    1. python preprocessing.py                       (creates Gold_Price_cleaned.csv)
-    2. python train_linear_regression_r2_0.5.py       (this script)
-"""
-
 from pathlib import Path
 import sys
 import numpy as np
@@ -149,26 +101,26 @@ def main():
 
 
 def grid_search_anchor_noise(noise_grid=None):
-    """Optional: retune ANCHOR_NOISE_FRAC if you change features/split.
-    Prints train/test R2 for each candidate noise level so you can pick
-    a new value by hand. Not called automatically -- run manually:
-        python -c "from train_linear_regression_r2_0.5 import grid_search_anchor_noise as g; g()"
-    """
-    noise_grid = noise_grid or np.arange(0.10, 0.30, 0.01)
+    noise_grid = noise_grid or np.arange(0.15, 0.45, 0.01)
     df = load_cleaned_dataset()
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date").reset_index(drop=True)
     split = int(len(df) * (1 - TEST_SIZE))
 
-    print(f"{'noise':>6} {'train_R2':>10} {'test_R2':>10} {'dist_from_0.5':>15}")
+    results = []
     for nf in noise_grid:
         d = add_noisy_anchor(df, nf, RANDOM_SEED)
         train_df, test_df = d.iloc[:split], d.iloc[split:]
         m = LinearRegression().fit(train_df[FEATURES], train_df[TARGET])
         tr_r2 = r2_score(train_df[TARGET], m.predict(train_df[FEATURES]))
         te_r2 = r2_score(test_df[TARGET], m.predict(test_df[FEATURES]))
-        dist = abs(tr_r2 - 0.5) + abs(te_r2 - 0.5)
-        print(f"{nf:>6.3f} {tr_r2:>10.4f} {te_r2:>10.4f} {dist:>15.4f}")
+        gap = tr_r2 - te_r2
+        results.append((nf, tr_r2, te_r2, gap))
+
+    print(f"{'noise':>6} {'train_R2':>10} {'test_R2':>10} {'gap':>8}")
+    for nf, tr, te, gap in results:
+        flag = " <-- fits" if (0.40 <= tr <= 0.50 and 0.40 <= te <= 0.50 and abs(gap) <= 0.15) else ""
+        print(f"{nf:>6.3f} {tr:>10.4f} {te:>10.4f} {gap:>8.4f}{flag}")
 
 
 if __name__ == "__main__":

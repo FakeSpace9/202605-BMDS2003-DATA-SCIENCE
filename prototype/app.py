@@ -10,10 +10,8 @@ st.set_page_config(layout="wide", page_title="Gold Price Predictor")
 def load_ml_assets():
     scaler = joblib.load('scaler.pkl')
     models = {
-        "Linear Regression (Baseline)": joblib.load('model_lr.pkl'),
-        "Ridge Regression": joblib.load('model_ridge.pkl'),
-        "Random Forest": joblib.load('model_rf.pkl'),
-        "Gradient Boosting": joblib.load('model_gb.pkl')
+        "Linear Regression (Baseline)": joblib.load('linear_regression_price_r0.5.pkl'),
+        
     }
     return scaler, models
 

@@ -94,13 +94,17 @@ print(df.loc[df['Is_Outlier_Price'], 'Date'].dt.year.value_counts().sort_index()
 # 7. Feature engineering (common for gold-price / time-series models)
 # ------------------------------------------------------------------
 # Lags
+
 df["Price_Lag1"] = df["Price"].shift(1)
 df["Price_Lag2"] = df["Price"].shift(2)
 df["Price_Lag30"] = df["Price"].shift(30)
+df["Price_Lag60"] = df["Price"].shift(60)
+df["Price_Lag90"] = df["Price"].shift(90)
 df["Volume_Lag1"] = df["Volume"].shift(1)
 
 df["MA_7"] = df["Price"].shift(1).rolling(7).mean()
 df["MA_30"] = df["Price"].shift(1).rolling(30).mean()
+df["MA_60"] = df["Price"].shift(1).rolling(60).mean()
 df["Volatility_7"] = df["Price"].shift(1).rolling(7).std()
 df["Volatility_30"] = df["Price"].shift(1).rolling(30).std()
 
@@ -155,6 +159,7 @@ df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
 # Price Distance to Moving Averages
 df["Price_to_MA7"] = (df["Price"].shift(1) - df["MA_7"]) / df["MA_7"]
 df["Price_to_MA30"] = (df["Price"].shift(1) - df["MA_30"]) / df["MA_30"]
+df["Price_to_MA60"] = (df["Price"].shift(1) - df["MA_60"]) / df["MA_60"]
 
 # 2. Volume-Price Interactions
 # OBV (On-Balance Volume) - direction based on lagged price changes
@@ -181,7 +186,6 @@ df["ATR_14"] = true_range.rolling(14).mean()
 
 # 4. Extended Horizon Lags
 df["Price_Lag7"] = df["Price"].shift(7)
-df["Price_Lag30"] = df["Price"].shift(30)
 df["Chg%_Lag7"] = df["Chg%"].shift(7)
 df["Chg%_Lag30"] = df["Chg%"].shift(30)
 
