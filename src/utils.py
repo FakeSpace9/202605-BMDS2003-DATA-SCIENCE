@@ -6,6 +6,7 @@ import joblib
 import json
 import numpy as np
 import pandas as pd
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.metrics import (
     mean_absolute_error,
     mean_absolute_percentage_error,
@@ -78,6 +79,101 @@ def print_metrics(name, y_train, y_train_pred, y_test, y_pred):
         "train_mape": train_mape,
         "test_mape": test_mape,
     }
+
+def _safe_log_metrics(y_true, y_pred):
+    """
+    Log-scale MAE/RMSE. Only meaningful for strictly positive series (e.g.
+    price levels) -- log() of a negative or zero value is undefined. If any
+    values are <= 0 (as Chg% will be, since price can fall), this returns
+    NaN rather than silently producing garbage or crashing.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    if (y_true <= 0).any() or (y_pred <= 0).any():
+        return np.nan, np.nan
+    log_true, log_pred = np.log(y_true), np.log(y_pred)
+    log_mae = mean_absolute_error(log_true, log_pred)
+    log_rmse = np.sqrt(mean_squared_error(log_true, log_pred))
+    return log_mae, log_rmse
+ 
+ 
+def _mape(y_true, y_pred):
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    # Avoid divide-by-near-zero blowing up the average; exclude rows where
+    # the actual value is essentially 0 (this matters for Chg%, which
+    # regularly sits near 0, unlike Price which never does).
+    mask = np.abs(y_true) > 1e-6
+    if mask.sum() == 0:
+        return np.nan
+    return (np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])).mean() * 100
+
+def _metric_block(y_true, y_pred):
+    return {
+        "MAE": mean_absolute_error(y_true, y_pred),
+        "RMSE": np.sqrt(mean_squared_error(y_true, y_pred)),
+        "MAPE": _mape(y_true, y_pred),
+        "R2": r2_score(y_true, y_pred),
+    }
+
+def print_metrics2(model_name, y_train, y_train_pred, y_test, y_pred,
+                   price_lag1_train=None, price_lag1_test=None):
+    """
+    Prints and returns MAE, RMSE, MAPE, R2 for train and test.
+ 
+    Log MAE / log RMSE are only valid on a strictly positive series. If the
+    target itself (y_train/y_test) is strictly positive -- e.g. predicting
+    Price directly -- they're computed on the target. If the target can go
+    negative (e.g. Chg%), pass price_lag1_train/test (the previous day's
+    actual price) and this will reconstruct predicted price as
+    Price_Lag1 * (1 + pred/100), then compute log MAE/RMSE on that
+    reconstructed, always-positive price series instead.
+    """
+    train_metrics = _metric_block(y_train, y_train_pred)
+    test_metrics = _metric_block(y_test, y_pred)
+ 
+    target_is_positive = (np.asarray(y_train) > 0).all() and (np.asarray(y_test) > 0).all()
+ 
+    if target_is_positive:
+        log_mae_train, log_rmse_train = _safe_log_metrics(y_train, y_train_pred)
+        log_mae_test, log_rmse_test = _safe_log_metrics(y_test, y_pred)
+        log_note = "(computed directly on target)"
+    elif price_lag1_train is not None and price_lag1_test is not None:
+        recon_train = np.asarray(price_lag1_train) * (1 + np.asarray(y_train_pred) / 100)
+        recon_train_actual = np.asarray(price_lag1_train) * (1 + np.asarray(y_train) / 100)
+        recon_test = np.asarray(price_lag1_test) * (1 + np.asarray(y_pred) / 100)
+        recon_test_actual = np.asarray(price_lag1_test) * (1 + np.asarray(y_test) / 100)
+        log_mae_train, log_rmse_train = _safe_log_metrics(recon_train_actual, recon_train)
+        log_mae_test, log_rmse_test = _safe_log_metrics(recon_test_actual, recon_test)
+        log_note = "(target goes negative -- computed on reconstructed Price instead, see docstring)"
+    else:
+        log_mae_train = log_rmse_train = log_mae_test = log_rmse_test = np.nan
+        log_note = "(target goes negative and no price_lag1 given -- skipped)"
+ 
+    train_metrics["LogMAE"] = log_mae_train
+    train_metrics["LogRMSE"] = log_rmse_train
+    test_metrics["LogMAE"] = log_mae_test
+    test_metrics["LogRMSE"] = log_rmse_test
+ 
+    print(f"\n=== {model_name} — metrics {log_note} ===")
+    header = f"{'Metric':<10}{'Train':>15}{'Test':>15}"
+    print(header)
+    for key in ["MAE", "RMSE", "MAPE", "LogMAE", "LogRMSE", "R2"]:
+        t, v = train_metrics[key], test_metrics[key]
+        t_str = f"{t:,.4f}" if pd.notna(t) else "NaN"
+        v_str = f"{v:,.4f}" if pd.notna(v) else "NaN"
+        print(f"{key:<10}{t_str:>15}{v_str:>15}")
+ 
+    return {"train": train_metrics, "test": test_metrics}
+ 
+ 
+def save_metrics2(model_name, metrics, filename=None):
+    filename = filename or f"{model_name.lower().replace(' ', '_')}_metrics.json"
+    path = METRICS_OUTPUT_PATH / filename
+    with open(path, "w") as f:
+        json.dump(metrics, f, indent=2, default=lambda x: None if pd.isna(x) else x)
+    print(f"\nSaved metrics to {path}")
+    return path
 
 def load_raw_dataset():
     print("Loading raw dataset...")
