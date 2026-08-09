@@ -1,0 +1,14 @@
+{
+  "train_r2": 1.0,
+  "test_r2": -3.0528663413683628,
+  "train_mae": 0.0,
+  "test_mae": 37110.684552230494,
+  "train_rmse": 0.0,
+  "test_rmse": 41419.63620516842,
+  "train_log_mae": 0.0,
+  "test_log_mae": 0.5907647423454345,
+  "train_log_rmse": 0.0,
+  "test_log_rmse": 0.632866351998127,
+  "train_mape": 0.0,
+  "test_mape": 0.4313960693947257
+}
