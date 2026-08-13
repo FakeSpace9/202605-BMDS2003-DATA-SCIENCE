@@ -1,4 +1,3 @@
-
 """
 Gold Price Prediction — KNN Regression
 80/20 chronological train-test split
@@ -31,36 +30,49 @@ from utils import (
 
 TARGET = "Price"
 
-# Same features used by the Linear Regression model
+# IMPORTANT: You must include lagged price features to predict the actual price.
+# Without knowing yesterday's price, KNN cannot guess today's price based on Volume/Month alone.
+# Ensure "Price_lag_1" or "MA_7" (Moving Average) exist in your preprocessed data.
 FEATURES = [
-    "Volume",
-    "Day",
-    "Month",
+    "Volatility_7",
     "Volatility_30",
+    "RSI_14",
+    "Volume_Momentum",
+    "Volume_Weighted_Chg_Lag1",
+    "daily_return_lag1",
+    "daily_return_lag2",
 ]
 
-# KNN hyperparameters
-N_NEIGHBORS = 2
-WEIGHTS = "distance"
-METRIC = "euclidean"
+# KNN hyperparameters 
+N_NEIGHBORS = 5      # Lowered from 10 to make predictions stick closer to recent prices
+WEIGHTS = "uniform" # 'distance' gives more weight to the most recent/similar days
+METRIC = "euclidean" # Standard Euclidean distance works well after scaling
 
 
 def main():
     print("Loading preprocessed train/test splits...")
     train_df, test_df = load_splits()
 
-    X_train = train_df[FEATURES]
+    # Validate if new features exist, otherwise fall back gracefully
+    missing_features = [f for f in FEATURES if f not in train_df.columns]
+    if missing_features:
+        print(f"WARNING: Missing features {missing_features}. Model performance will suffer.")
+        valid_features = [f for f in FEATURES if f in train_df.columns]
+    else:
+        valid_features = FEATURES
+
+    X_train = train_df[valid_features]
     y_train = train_df[TARGET]
 
-    X_test = test_df[FEATURES]
+    X_test = test_df[valid_features]
     y_test = test_df[TARGET]
 
     print(f"Train size: {X_train.shape}  Test size: {X_test.shape}")
-    print(f"Features  : {FEATURES}")
+    print(f"Features  : {valid_features}")
 
     print("\nTraining KNN Regression model...")
 
-    # Scaling is important for KNN because it uses distance
+    # Scaling is critical for KNN because it calculates Euclidean distances
     model = Pipeline([
         ("scaler", StandardScaler()),
         ("knn", KNeighborsRegressor(
@@ -99,8 +111,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
