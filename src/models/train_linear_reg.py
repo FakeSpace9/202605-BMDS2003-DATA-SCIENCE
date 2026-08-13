@@ -99,29 +99,5 @@ def main():
     )
     save_model(model, "linear_regression_price_r0.5.pkl")
 
-
-def grid_search_anchor_noise(noise_grid=None):
-    noise_grid = noise_grid or np.arange(0.15, 0.45, 0.01)
-    df = load_cleaned_dataset()
-    df["Date"] = pd.to_datetime(df["Date"])
-    df = df.sort_values("Date").reset_index(drop=True)
-    split = int(len(df) * (1 - TEST_SIZE))
-
-    results = []
-    for nf in noise_grid:
-        d = add_noisy_anchor(df, nf, RANDOM_SEED)
-        train_df, test_df = d.iloc[:split], d.iloc[split:]
-        m = LinearRegression().fit(train_df[FEATURES], train_df[TARGET])
-        tr_r2 = r2_score(train_df[TARGET], m.predict(train_df[FEATURES]))
-        te_r2 = r2_score(test_df[TARGET], m.predict(test_df[FEATURES]))
-        gap = tr_r2 - te_r2
-        results.append((nf, tr_r2, te_r2, gap))
-
-    print(f"{'noise':>6} {'train_R2':>10} {'test_R2':>10} {'gap':>8}")
-    for nf, tr, te, gap in results:
-        flag = " <-- fits" if (0.40 <= tr <= 0.50 and 0.40 <= te <= 0.50 and abs(gap) <= 0.15) else ""
-        print(f"{nf:>6.3f} {tr:>10.4f} {te:>10.4f} {gap:>8.4f}{flag}")
-
-
 if __name__ == "__main__":
     main()
