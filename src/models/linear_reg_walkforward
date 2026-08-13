@@ -30,18 +30,13 @@ MODEL_OUTPUT_PATH = project_root / "prototype"
 
 TARGET = "Price"
 
-# NOTE: MA_7 / Volatility_7 track the price almost 1:1 (MA_7's coefficient
-# was ~1.0 in the original run), which is what pushed test R2 up to ~0.89.
-# Swapping to the 30-day versions gives a coarser, more lagged trend signal
-# -- weaker fit, closer to a realistic "the model doesn't just echo
-# yesterday's price" result (mean test R2 ~0.62 on this dataset).
 FEATURES = [
     "Volume",
     "Month",
     "Day",
-    "Volatility_30",
+    "Volatility_7",
 
-    "MA_30",
+    "MA_7",
 
 
 
@@ -172,5 +167,4 @@ def main():
 
 
 if __name__ == "__main__":
-    
     main()
