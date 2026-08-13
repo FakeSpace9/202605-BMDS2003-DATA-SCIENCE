@@ -35,17 +35,7 @@ FEATURES = [
     "Month",
     "Day",
     "Volatility_7",
-
     "MA_7",
-
-
-
-
-
-
-
-
-    
 ]
 
 MIN_TRAIN_YEARS = 4  # need enough history before the first test fold
