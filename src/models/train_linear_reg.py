@@ -34,7 +34,7 @@ FEATURES = [
     "daily_return_lag2",
 ]
 
-TEST_SIZE = 0.25
+TEST_SIZE = 0.20
 
 
 def add_noisy_anchor(df: pd.DataFrame, noise_frac: float, seed: int) -> pd.DataFrame:
