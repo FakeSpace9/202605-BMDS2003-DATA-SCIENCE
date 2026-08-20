@@ -1,193 +1,199 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
-from pathlib import Path
+import os
+from datetime import datetime
 
-# Set page layout to wide for a better dashboard look
-st.set_page_config(layout="wide", page_title="Gold Price Predictor")
+# ==========================================
+# 1. ALGORITHM & MODEL CONFIGURATION
+# ==========================================
+ALGO_NAME_1 = "Linear Regression (Walk-Forward)"
+ALGO_NAME_2 = "KNN Regression (Walk-Forward)"
 
-# --- PATH DEFINITIONS ---
-current_dir = Path(__file__).resolve().parent
+PKL_PATH_1 = "linear_regression_walkforward_price.pkl"
+PKL_PATH_2 = "knn_walkforward_price.pkl"
 
-SCALER_FILENAME = "scaler.pkl"
-DATA_FILENAME = "Gold_Price.csv"
-
-# name shown in the UI -> pkl filename
-MODEL_FILES = {
-    "Linear Regression (Baseline)": "linear_regression_price_r0.5.pkl",
+model_paths = {
+    ALGO_NAME_1: PKL_PATH_1,
+    ALGO_NAME_2: PKL_PATH_2
 }
 
-FEATURE_COLUMNS = ["Open", "High", "Low", "Volume"]
-
-
-# --- ASSET LOADING ---
+# ==========================================
+# 2. HELPER FUNCTIONS
+# ==========================================
 @st.cache_resource
-def load_ml_assets():
-    """Load the scaler and every model, failing loudly (but cleanly) if any file is missing."""
-    missing = [
-        f for f in [SCALER_FILENAME, *MODEL_FILES.values()]
-        if not (current_dir / f).exists()
-    ]
-    if missing:
-        st.error(
-            "Missing model file(s): " + ", ".join(missing) +
-            f". Make sure they sit next to app.py at `{current_dir}`."
-        )
-        st.stop()
+def load_saved_object(path):
+    if not path or not os.path.exists(path):
+        return None
+    return joblib.load(path)
 
-    scaler = joblib.load(current_dir / SCALER_FILENAME)
-    models = {name: joblib.load(current_dir / fname) for name, fname in MODEL_FILES.items()}
-    return scaler, models
+def calculate_rsi(prices, window=14):
+    """Calculates the Relative Strength Index (RSI) using Pandas."""
+    df = pd.DataFrame(prices, columns=['price'])
+    delta = df['price'].diff()
+    
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    
+    avg_gain = gain.rolling(window=window, min_periods=1).mean()
+    avg_loss = loss.rolling(window=window, min_periods=1).mean()
+    
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    return rsi.iloc[-1]
 
+# ==========================================
+# 3. STREAMLIT APP UI
+# ==========================================
+def main():
+    st.title("Gold Price Prediction App")
+    st.write("Enter recent market history to automatically calculate technical indicators and predict the next closing price.")
 
-@st.cache_data
-def load_data():
-    """Load and sort the historical gold price data."""
-    data_path = current_dir / DATA_FILENAME
-    if not data_path.exists():
-        st.error(f"Data file not found: `{DATA_FILENAME}` (expected at `{current_dir}`).")
-        st.stop()
-    data = pd.read_csv(data_path)
-    data["Date"] = pd.to_datetime(data["Date"])
-    return data.sort_values("Date")
+    st.sidebar.header("Model Selection")
+    selected_algo = st.sidebar.selectbox("Choose an Algorithm:", list(model_paths.keys()))
 
+    st.subheader("Input Recent Data")
+    
+    input_data = None
+    calculated_metrics = {}
 
-scaler, models = load_ml_assets()
-df = load_data()
+    # ---------------------------------------------------------
+    # UI FOR LINEAR REGRESSION
+    # Features: ["Volume", "Month", "Day", "Volatility_7", "MA_7"]
+    # ---------------------------------------------------------
+    if selected_algo == ALGO_NAME_1:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            in_volume = st.number_input("Yesterday's Volume", value=150000.0)
+        with col2:
+            # value=None allows the box to be completely blank
+            in_month = st.number_input("Month (1-12) [Blank = Today]", min_value=1, max_value=12, value=None)
+        with col3:
+            in_day = st.number_input("Day (1-31) [Blank = Today]", min_value=1, max_value=31, value=None)
+            
+        default_7_days = "2380.5, 2390.0, 2385.2, 2395.1, 2400.0, 2398.5, 2405.0"
+        price_input = st.text_area("Enter the last 7 closing prices (comma-separated, oldest to newest):", value=default_7_days)
+        
+        if st.button("Predict Price"):
+            try:
+                prices = [float(x.strip()) for x in price_input.split(',')]
+                
+                if len(prices) != 7:
+                    st.error(f"Please enter exactly 7 prices. You entered {len(prices)}.")
+                    return
+                
+                # 1. Background Calculations
+                calc_ma7 = np.mean(prices)
+                calc_vol7 = np.std(prices, ddof=1) 
+                
+                # 2. Date Fallback Logic (If blank, use current date)
+                final_month = in_month if in_month is not None else datetime.now().month
+                final_day = in_day if in_day is not None else datetime.now().day
+                
+                calculated_metrics = {
+                    "Month Used": final_month,
+                    "Day Used": final_day,
+                    "MA_7": calc_ma7,
+                    "Volatility_7": calc_vol7
+                }
+                
+                # 3. Pack strictly ordered array
+                input_data = np.array([[in_volume, final_month, final_day, calc_vol7, calc_ma7]])
+                
+            except ValueError:
+                st.error("Invalid input. Please ensure prices are numbers separated by commas.")
+                return
 
-# --- APP UI ---
-st.title("🥇 Daily Gold Price Prediction & Analytics Dashboard")
-st.write(
-    "This application predicts the daily closing price of gold based on "
-    "intra-day trading metrics and provides interactive historical market analysis."
-)
+    # ---------------------------------------------------------
+    # UI FOR KNN REGRESSION
+    # Features: ["Volume_Momentum", "Volatility_7", "Volatility_30", "RSI_14", "daily_return_lag1", "daily_return_lag2"]
+    # ---------------------------------------------------------
+    elif selected_algo == ALGO_NAME_2:
+        
+        # 1. 30 Days of Prices (for Volatility and RSI)
+        default_30_days = ", ".join([str(2300.0 + i) for i in range(30)])
+        price_input = st.text_area("Enter the last 30 closing prices (comma-separated, oldest to newest):", value=default_30_days)
+        
+        # 2. 10 Days of Volume (for Volume_Momentum)
+        default_10_vols = ", ".join([str(150000.0 + (i * 1000)) for i in range(10)])
+        vol_input = st.text_area("Enter the last 10 volume figures (comma-separated, oldest to newest):", value=default_10_vols)
 
-# --- SIDEBAR: USER INPUTS ---
-st.sidebar.header("1. Select Machine Learning Model")
-selected_model_name = st.sidebar.selectbox("Active Prediction Model:", list(models.keys()))
-active_model = models[selected_model_name]
+        if st.button("Predict Price"):
+            try:
+                prices = [float(x.strip()) for x in price_input.split(',')]
+                volumes = [float(x.strip()) for x in vol_input.split(',')]
+                
+                if len(prices) < 30:
+                    st.error(f"Please enter at least 30 prices. You entered {len(prices)}.")
+                    return
+                if len(volumes) < 10:
+                    st.error(f"Please enter at least 10 volume figures. You entered {len(volumes)}.")
+                    return
+                
+                # Take exactly the correct windows
+                prices_30 = prices[-30:]
+                prices_7 = prices[-7:]
+                vols_10 = volumes[-10:]
+                
+                # --- Background Calculations ---
+                
+                # Volatility and RSI
+                calc_vol30 = np.std(prices_30, ddof=1)
+                calc_vol7 = np.std(prices_7, ddof=1)
+                calc_rsi = calculate_rsi(prices_30, window=14)
+                
+                # Daily Returns
+                ret_lag1 = (prices_30[-1] - prices_30[-2]) / prices_30[-2]
+                ret_lag2 = (prices_30[-2] - prices_30[-3]) / prices_30[-3]
+                
+                # Volume Momentum (Yesterday's Vol / 10-day Avg Vol)
+                calc_vol_mom = vols_10[-1] / np.mean(vols_10)
+                
+                calculated_metrics = {
+                    "Vol Momentum": calc_vol_mom,
+                    "Volatility_30": calc_vol30,
+                    "Volatility_7": calc_vol7,
+                    "RSI_14": calc_rsi,
+                    "Return Lag 1 (%)": ret_lag1 * 100,
+                    "Return Lag 2 (%)": ret_lag2 * 100
+                }
+                
+                input_data = np.array([[calc_vol_mom, calc_vol7, calc_vol30, calc_rsi, ret_lag1, ret_lag2]])
+                
+            except ValueError:
+                st.error("Invalid input. Please ensure prices and volumes are numbers separated by commas.")
+                return
 
-st.sidebar.markdown("---")
-st.sidebar.header("2. Input Market Features")
-
-
-def user_input_features() -> pd.DataFrame:
-    open_price = st.sidebar.number_input("Open Price", min_value=20000.0, max_value=150000.0, value=136143.0)
-    high_price = st.sidebar.number_input("High Price", min_value=20000.0, max_value=150000.0, value=137037.0)
-    low_price = st.sidebar.number_input("Low Price", min_value=20000.0, max_value=150000.0, value=135525.0)
-    volume = st.sidebar.number_input("Trading Volume", min_value=0.0, max_value=150000.0, value=51877.0)
-
-    data = {
-        "Open": open_price,
-        "High": high_price,
-        "Low": low_price,
-        "Volume": volume,
-    }
-    # Enforce the exact column order the scaler/model were fit on
-    return pd.DataFrame([data], columns=FEATURE_COLUMNS)
-
-
-input_df = user_input_features()
-
-# --- MAIN PAGE LAYOUT ---
-col1, col2 = st.columns([1, 2])
-
-# LEFT COLUMN: Prediction Engine
-with col1:
-    st.subheader(f"🔮 Price Prediction ({selected_model_name})")
-    st.write("Current Input Parameters:")
-    st.dataframe(input_df, use_container_width=True)
-
-    # PREDICTION LOGIC
-    try:
-        scaled_input = scaler.transform(input_df)
-        main_prediction = active_model.predict(scaled_input)[0]
-        st.success(f"### Estimated Close Price: ₹{main_prediction:,.2f} (INR)")
-    except Exception as exc:
-        st.error(f"Prediction failed: {exc}")
-        scaled_input = None
-
-    st.markdown("---")
-
-    # --- MODEL COMPARISON FEATURE (TABLE ONLY) ---
-    st.subheader("⚖️ Model Comparison")
-    if len(models) < 2:
-        st.caption("Only one model is currently registered — add more to `MODEL_FILES` to compare.")
-    else:
-        compare_toggle = st.checkbox("Compare all models")
-        if compare_toggle and scaled_input is not None:
-            comparison_data = {name: mod.predict(scaled_input)[0] for name, mod in models.items()}
-            comp_df = pd.DataFrame(
-                list(comparison_data.items()), columns=["Model", "Predicted Price (INR)"]
-            ).set_index("Model")
-            st.dataframe(comp_df.style.format("₹{:,.2f}"), use_container_width=True)
-
-# RIGHT COLUMN: Interactive Historical Chart
-with col2:
-    st.subheader("📈 Interactive Historical Trend")
-    st.write("Filter the historical chart by typing exact dates or using the drag bar.")
-
-    # --- ADVANCED INTERACTIVE DATE FILTERING ---
-    min_date = df["Date"].min().date()
-    max_date = df["Date"].max().date()
-    default_start = max(min_date, pd.to_datetime("2014-01-01").date())
-
-    if "start_input" not in st.session_state:
-        st.session_state.start_input = default_start
-        st.session_state.end_input = max_date
-        st.session_state.slider_dates = (default_start, max_date)
-
-    def sync_from_inputs():
-        start = st.session_state.start_input
-        end = st.session_state.end_input
-
-        if start is None or end is None:
-            return
-
-        if start > end:
-            st.toast(
-                "⚠️ Error: Start Date cannot be after End Date. Dates automatically adjusted.",
-                icon="❌",
-            )
-            st.session_state.end_input = start
-            st.session_state.slider_dates = (start, start)
+    # ==========================================
+    # 4. EXECUTE PREDICTION & SHOW RESULTS
+    # ==========================================
+    if input_data is not None:
+        selected_pkl_path = model_paths[selected_algo]
+        model = load_saved_object(selected_pkl_path)
+        
+        if model:
+            st.markdown("---")
+            st.write("### Calculated Background Features")
+            
+            # Dynamically format columns based on how many metrics we calculated
+            cols = st.columns(len(calculated_metrics))
+            for i, (metric_name, metric_value) in enumerate(calculated_metrics.items()):
+                # Format differently if it's Month or Day (no decimals) vs other metrics
+                if "Month" in metric_name or "Day" in metric_name:
+                    cols[i].metric(label=metric_name, value=f"{int(metric_value)}")
+                else:
+                    cols[i].metric(label=metric_name, value=f"{metric_value:.4f}")
+            
+            try:
+                prediction = model.predict(input_data)
+                st.markdown("---")
+                st.success(f"### Predicted Next Closing Price: ${prediction[0]:.2f}")
+            except Exception as e:
+                st.error(f"An error occurred during prediction: {e}")
         else:
-            st.session_state.slider_dates = (start, end)
+            st.error(f"Model file not found at: {selected_pkl_path}")
 
-    def sync_from_slider():
-        st.session_state.start_input = st.session_state.slider_dates[0]
-        st.session_state.end_input = st.session_state.slider_dates[1]
-
-    col2_a, col2_b = st.columns(2)
-    with col2_a:
-        st.date_input(
-            "Type Start Date:",
-            key="start_input",
-            min_value=min_date,
-            max_value=max_date,
-            on_change=sync_from_inputs,
-        )
-    with col2_b:
-        st.date_input(
-            "Type End Date:",
-            key="end_input",
-            min_value=min_date,
-            max_value=max_date,
-            on_change=sync_from_inputs,
-        )
-
-    st.slider(
-        "Or drag to select date range:",
-        min_value=min_date,
-        max_value=max_date,
-        key="slider_dates",
-        format="YYYY-MM-DD",
-        on_change=sync_from_slider,
-    )
-
-    final_start = st.session_state.slider_dates[0]
-    final_end = st.session_state.slider_dates[1]
-    filtered_df = df[(df["Date"].dt.date >= final_start) & (df["Date"].dt.date <= final_end)]
-
-    chart_data = filtered_df.set_index("Date")[["Price"]]
-    st.line_chart(chart_data)
+if __name__ == "__main__":
+    main()
