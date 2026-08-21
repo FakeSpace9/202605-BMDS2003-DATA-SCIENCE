@@ -310,7 +310,7 @@ with tab_predict:
         c1, c2, c3 = st.columns(3)
         with c1:
             lr_volume = st.number_input("Yesterday's Trading Volume", min_value=0.0,
-                                         value=150000.0, key="lr_volume")
+                             value=51877.0, key="lr_volume")
         with c2:
             lr_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12,
                                         value=None, key="lr_month")
@@ -319,7 +319,7 @@ with tab_predict:
                                       value=None, key="lr_day")
         lr_prices_raw = st.text_area(
             "Last 7 closing prices (comma-separated, oldest \u2192 newest)",
-            value="2380.5, 2390.0, 2385.2, 2395.1, 2400.0, 2398.5, 2405.0", key="lr_prices")
+            value="136104, 137789, 132595, 133974, 135454, 135771, 135793", key="lr_prices")
 
         bcol1, bcol2, bcol3 = st.columns([1, 1, 1])
         with bcol1:
@@ -361,10 +361,10 @@ with tab_predict:
         st.caption(f"Features used: {', '.join(FEATURES[ALGO_KNN])}")
         knn_prices_raw = st.text_area(
             "Last 30 closing prices (comma-separated, oldest \u2192 newest)",
-            value=", ".join(str(2300.0 + i) for i in range(30)), key="knn_prices")
+            value=", ".join(str(128000.0 + (i * 250)) for i in range(30)), key="knn_prices")
         knn_vol_raw = st.text_area(
             "Last 10 trading volumes (comma-separated, oldest \u2192 newest)",
-            value=", ".join(str(150000.0 + i * 1000) for i in range(10)), key="knn_vols")
+            value=", ".join(str(45000.0 + (i * 500)) for i in range(10)), key="knn_vols")
 
         bcol1, bcol2, bcol3 = st.columns([1, 1, 1])
         with bcol1:
@@ -421,7 +421,7 @@ with tab_predict:
         c1, c2, c3 = st.columns(3)
         with c1:
             rf_volume = st.number_input("Yesterday's Trading Volume", min_value=0.0,
-                                         value=150000.0, key="rf_volume")
+                             value=51877.0, key="rf_volume")
         with c2:
             rf_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12,
                                         value=None, key="rf_month")
@@ -430,7 +430,7 @@ with tab_predict:
                                       value=None, key="rf_day")
         rf_prices_raw = st.text_area(
             "Last 7 closing prices (comma-separated, oldest \u2192 newest; last value = yesterday's close)",
-            value="2380.5, 2390.0, 2385.2, 2395.1, 2400.0, 2398.5, 2405.0", key="rf_prices")
+            value="136104, 137789, 132595, 133974, 135454, 135771, 135793", key="rf_prices")
 
         bcol1, bcol2, bcol3 = st.columns([1, 1, 1])
         with bcol1:
