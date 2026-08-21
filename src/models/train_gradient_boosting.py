@@ -275,7 +275,7 @@ def report_results(
 def persist_outputs(results_df: pd.DataFrame, importance_df: pd.DataFrame, final_model) -> None:
 
     OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
-    fold_metrics_path = (OUTPUT_DIR /"gradient_boosting_fold_metrics.csv")
+    fold_metrics_path = (OUTPUT_DIR /"fold_metrics"/"gradient_boosting_fold_metrics.csv")
     results_df.to_csv(fold_metrics_path, index=False)
 
     print(
@@ -283,7 +283,7 @@ def persist_outputs(results_df: pd.DataFrame, importance_df: pd.DataFrame, final
         f"{fold_metrics_path}"
     )
 
-    importance_path = (OUTPUT_DIR / "gradient_boosting_feature_importance.csv")
+    importance_path = (OUTPUT_DIR /"feature_coefficient"/ "gradient_boosting_feature_coefficient.csv")
 
     importance_df.to_csv(importance_path, index=False)
 

@@ -144,7 +144,7 @@ def main():
 
 
     # Save outputs
-    results_path = MODEL_OUTPUT_PATH / "walkforward_price_knn_fold_metrics.csv"
+    results_path = MODEL_OUTPUT_PATH / "fold_metrics"/"walkforward_price_knn_fold_metrics.csv"
     results_df.to_csv(results_path, index=False)
     print(f"\nSaved fold metrics to {results_path}")
 

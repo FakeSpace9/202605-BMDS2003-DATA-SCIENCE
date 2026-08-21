@@ -18,7 +18,6 @@ summary (JSON), plus the final fold's fitted model.
 
 from pathlib import Path
 import sys
-import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -136,8 +135,8 @@ def main():
     print(summary.round(4))
  
     # Save (no plots) -- fold results, coefficients, and aggregate summary
-    results_path = MODEL_OUTPUT_PATH / "walkforward_price_fold_metrics.csv"
-    coef_path = MODEL_OUTPUT_PATH / "walkforward_price_coefficients.csv"
+    results_path = MODEL_OUTPUT_PATH / "fold_metrics"/"walkforward_price_fold_metrics.csv"
+    coef_path = MODEL_OUTPUT_PATH / "feature_coefficient"/"walkforward_price_coefficients.csv"
     results_df.to_csv(results_path, index=False)
     coef_df.to_csv(coef_path, index=False)
     print(f"\nSaved fold metrics to {results_path}")

@@ -195,11 +195,11 @@ def report_results(results_df: pd.DataFrame, importance_df: pd.DataFrame) -> Non
 def persist_outputs(results_df: pd.DataFrame, importance_df: pd.DataFrame, final_model) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    fold_metrics_path = OUTPUT_DIR / "random_forest_fold_metrics.csv"
+    fold_metrics_path = OUTPUT_DIR /"fold_metrics"/ "random_forest_fold_metrics.csv"
     results_df.to_csv(fold_metrics_path, index=False)
     print(f"\nSaved fold metrics to {fold_metrics_path}")
 
-    importance_path = OUTPUT_DIR / "random_forest_feature_importance.csv"
+    importance_path = OUTPUT_DIR / "feature_coefficient"/"random_forest_feature_coefficient.csv"
     importance_df.to_csv(importance_path, index=False)
     print(f"Saved feature importance to {importance_path}")
 
