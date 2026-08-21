@@ -1,19 +1,3 @@
-"""
-Gold Price Prediction App -- Streamlit prototype.
-
-Sections:
-    1. Market Insights        -- 5 selected EDA plots from report_assets/plots
-    2. Model Comparison        -- walk-forward metrics for all 3 trained algorithms
-    3. Predict & Forecast      -- static, per-algorithm manual input forms
-                                  (no dynamic single dropdown). Each algorithm
-                                  section lets you:
-                                    a) Predict just the next day, and/or
-                                    b) Forecast N days ahead
-                                  Both use ONLY the numbers you typed into that
-                                  section -- nothing is pulled from a hidden
-                                  historical CSV.
-"""
-
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -31,7 +15,7 @@ warnings.filterwarnings("ignore")
 # ==========================================
 BASE_DIR = Path(__file__).resolve().parent          # .../prototype
 PROJECT_ROOT = BASE_DIR.parent                        # repo root
-METRICS_DIR = BASE_DIR / "metrics"
+METRICS_DIR = BASE_DIR / "summary_metrics"
 PLOTS_DIR = PROJECT_ROOT / "report_assets" / "plots"
 
 st.set_page_config(layout="wide", page_title="Gold Price Predictor", page_icon="\U0001F947")
@@ -87,7 +71,7 @@ METRIC_COLUMN_ORDER = ["test_MAE", "test_RMSE", "test_MAPE", "test_LogMAE",
 def load_models():
     loaded = {}
     for algo, fname in MODEL_FILES.items():
-        path = BASE_DIR / fname
+        path = BASE_DIR / "model"/fname
         loaded[algo] = joblib.load(path) if path.exists() else None
     return loaded
 

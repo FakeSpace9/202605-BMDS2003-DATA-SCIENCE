@@ -22,7 +22,7 @@ CLEANED_PATH = project_root / "data" / "processed" / "Gold_Price_cleaned.csv"
 TRAIN_PATH = project_root / "data" / "processed"/"Gold_Price_train.csv"
 TEST_PATH = project_root / "data" / "processed"/"Gold_Price_test.csv"
 MODEL_OUTPUT_PATH = project_root / "prototype"
-METRICS_OUTPUT_PATH = project_root / "prototype" / "metrics"
+METRICS_OUTPUT_PATH = project_root / "prototype"
 
 def print_metrics(name, y_train, y_train_pred, y_test, y_pred):
 
@@ -213,7 +213,7 @@ def print_metrics2(model_name, y_train, y_train_pred, y_test, y_pred,
  
 def save_metrics2(model_name, metrics, filename=None):
     filename = filename or f"{model_name.lower().replace(' ', '_')}_metrics.json"
-    path = METRICS_OUTPUT_PATH / filename
+    path = METRICS_OUTPUT_PATH /"summary_metrics"/ filename
     with open(path, "w") as f:
         json.dump(metrics, f, indent=2, default=lambda x: None if pd.isna(x) else x)
     print(f"\nSaved metrics to {path}")
@@ -242,7 +242,7 @@ def load_splits():
 
 def save_model(model, model_name: str):
 
-    joblib.dump(model, MODEL_OUTPUT_PATH/model_name)
+    joblib.dump(model, MODEL_OUTPUT_PATH/"model"/model_name)
 
     print(f"Model saved to {MODEL_OUTPUT_PATH}/{model_name}")
 
@@ -253,7 +253,7 @@ def save_metrics(model_name: str, metrics: dict):
 
     # Sanitize the model name to create a safe filename
     safe_filename = f"{model_name.replace('/', '_').replace(' ', '_')}.json"
-    output_path = METRICS_OUTPUT_PATH / safe_filename
+    output_path = METRICS_OUTPUT_PATH / "summaryy_metrics"/safe_filename
 
     # Save the specific model metrics to its own file
     with open(output_path, "w") as f:
