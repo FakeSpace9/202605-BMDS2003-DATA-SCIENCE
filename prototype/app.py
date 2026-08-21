@@ -56,7 +56,7 @@ FEATURES = {
     ALGO_LR: ["Volume", "Month", "Day", "Volatility_7", "MA_7"],
     ALGO_KNN: ["Volume_Momentum", "Volatility_7", "Volatility_30", "RSI_14",
                "daily_return_lag1", "daily_return_lag2"],
-    ALGO_RF: ["Volume", "Month", "Day", "Volatility_7"],
+    ALGO_RF: ["Volume", "Month", "Day", "Volatility_7", "Return_Lag1"],
 }
 
 # 5 most relevant plots for a forecasting dashboard, out of the 15 saved
@@ -175,9 +175,10 @@ def run_recursive_forecast(algo, model, seed_prices, seed_volumes, anchor_date, 
 
         elif algo == ALGO_RF:
             price_lag1 = price_hist[-1]
-            X = np.array([[vol_forecast, month, day, vol7]])
+            return_lag1 = np.log(price_hist[-1] / price_hist[-2])
+            X = np.array([[vol_forecast, month, day, vol7, return_lag1]])
             change = float(model.predict(X)[0])
-            pred_price = price_lag1 + change
+            pred_price = price_lag1 * np.exp(change)
 
         elif algo == ALGO_KNN:
             prices_30 = price_hist[-30:]
@@ -454,19 +455,22 @@ with tab_predict:
                     final_day = int(rf_day) if rf_day is not None else datetime.now().day
                     vol7 = float(np.std(prices, ddof=1))
                     price_lag1 = prices[-1]
-                    X = np.array([[rf_volume, final_month, final_day, vol7]])
+                    return_lag1 = np.log(prices[-1] / prices[-2])
+                    X = np.array([[rf_volume, final_month, final_day, vol7, return_lag1]])
                     change = float(models[ALGO_RF].predict(X)[0])
-                    pred = price_lag1 + change
+                    pred = price_lag1 * np.exp(change)
                     st.session_state.pred_results[ALGO_RF] = pred
 
                     st.success(f"### Predicted Next Closing Price: ${pred:,.2f}")
                     st.caption(
-                        f"Model predicts a small daily change ({change:+.4f}), "
-                        f"added to the last known close of ${price_lag1:,.2f}."
+                        f"Model predicts a log return of {change:+.6f}, "
+                        f"which is converted to a predicted closing price from "
+                        f"the last known close of ${price_lag1:,.2f}."
                     )
-                    m1, m2 = st.columns(2)
+                    m1, m2, m3 = st.columns(3)
                     m1.metric("Volatility_7", f"{vol7:,.2f}")
-                    m2.metric("Month / Day used", f"{final_month} / {final_day}")
+                    m2.metric("Return_Lag1", f"{return_lag1:+.6f}")
+                    m3.metric("Month / Day used", f"{final_month} / {final_day}")
 
                 if rf_do_forecast:
                     compute_and_store_forecast(ALGO_RF, prices, [rf_volume], int(rf_ndays))
