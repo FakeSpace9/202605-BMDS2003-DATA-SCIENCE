@@ -1,98 +1,446 @@
+"""
+Gradient Boosting walk-forward price model.
+
+Approach:
+- Predicts LOG RETURN (log(Price / Price_Lag1)), not raw price.
+- Reconstructed as Price = Price_Lag1 * exp(pred_return).
+- Features: Volume, Month, Day, Volatility_7, Return_Lag1.
+- Walk-forward validation: train on years before a given
+  year, test on that year.
+"""
+
 from pathlib import Path
 import sys
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.metrics import r2_score
 
-# Connect to group project utilities
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-from utils import print_metrics2, save_model, save_metrics2, load_cleaned_dataset
+SCRIPT_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.append(str(SCRIPT_DIR))
 
-current_dir = Path(__file__).resolve().parent.parent
-project_root = current_dir.parent
-MODEL_OUTPUT_PATH = project_root / "prototype"
+from utils import (
+    load_cleaned_dataset,
+    print_metrics2,
+    save_metrics2,
+    save_model,
+)
 
-TARGET = "Price"
-ANCHOR = "Price_Lag30"
-ANCHOR_NOISY = "Price_Lag30_noisy"
-RANDOM_SEED = 42
-ANCHOR_NOISE_FRAC = 0.18
+PRICE_COL = "Price"
+LAG1_COL = "Price_Lag1"
+RETURN_COL = "Price_Change"
 
-FEATURES = [
-    ANCHOR_NOISY,
+FEATURE_COLS = [
+    "Volume",
+    "Month",
+    "Day",
     "Volatility_7",
-    "Volatility_30",
-    "RSI_14",
-    "Volume_Momentum",
-    "Volume_Weighted_Chg_Lag1",
-    "daily_return_lag1",
-    "daily_return_lag2",
+    "Return_Lag1",
 ]
 
-TEST_SIZE = 0.20
+GB_PARAMS = dict(
+    n_estimators=50,
+    learning_rate=0.03,
+    max_depth=2,
+    min_samples_split=20,
+    min_samples_leaf=10,
+    random_state=42,
+)
 
+WARMUP_YEARS = 4
+MIN_FOLD_SIZE = 30
+MIN_TRAIN_SIZE = 100
 
-def add_noisy_anchor(df: pd.DataFrame, noise_frac: float, seed: int) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
-    noise = rng.standard_normal(len(df))
-    df = df.copy()
-    df[ANCHOR_NOISY] = df[ANCHOR] * (1.0 + noise_frac * noise)
-    return df
+OUTPUT_DIR = PROJECT_ROOT / "prototype"
 
-
-def main():
-    print("Loading cleaned dataset...")
+def prepare_dataset() -> pd.DataFrame:
     df = load_cleaned_dataset()
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date").reset_index(drop=True)
-    df = add_noisy_anchor(df, ANCHOR_NOISE_FRAC, RANDOM_SEED)
 
-    split = int(len(df) * (1 - TEST_SIZE))
-    train_df, test_df = df.iloc[:split], df.iloc[split:]
-    print(f"Train: {train_df['Date'].min().date()} -> {train_df['Date'].max().date()} (n={len(train_df)})")
-    print(f"Test : {test_df['Date'].min().date()} -> {test_df['Date'].max().date()} (n={len(test_df)})")
+    raw_feature_cols = [c for c in FEATURE_COLS if c != "Return_Lag1"    ]
 
-    X_train, y_train = train_df[FEATURES], train_df[TARGET]
-    X_test, y_test = test_df[FEATURES], test_df[TARGET]
+    needed = ["Date", "Year", PRICE_COL,LAG1_COL,] + raw_feature_cols + [RETURN_COL]
 
-    # Model training using Gradient Boosting
-    model = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=RANDOM_SEED)
-    model.fit(X_train, y_train)
+    missing = [c for c in needed if c not in df.columns]
 
-    y_train_pred = model.predict(X_train)
-    y_pred = model.predict(X_test)
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
 
-    # Output formatted metrics
-    metrics = print_metrics2(
-        "GradientBoosting_r0.5", y_train, y_train_pred, y_test, y_pred,
-        price_lag1_train=train_df["Price_Lag1"],
-        price_lag1_test=test_df["Price_Lag1"],
+    df = df.dropna(subset=needed).reset_index(drop=True)
+
+    positive = ((df[PRICE_COL] > 0) & (df[LAG1_COL] > 0))
+    df = df.loc[positive].reset_index(drop=True)
+
+    df[RETURN_COL] = np.log(df[PRICE_COL] / df[LAG1_COL])
+    df = df.dropna(subset=[RETURN_COL]).reset_index(drop=True)
+
+    df["Return_Lag1"] = df[RETURN_COL].shift(1)
+    df = df.dropna(subset=["Return_Lag1"]).reset_index(drop=True)
+
+    return df
+
+def make_test_windows(df: pd.DataFrame) -> list[list[int]]:
+
+    all_years = sorted(df["Year"].unique())
+    candidate_years = all_years[WARMUP_YEARS:]
+
+    windows = []
+    for year in candidate_years:
+
+        row_count = (
+            df["Year"] == year
+        ).sum()
+
+        if (
+            windows
+            and row_count < MIN_FOLD_SIZE
+        ):
+            windows[-1].append(year)
+        else:
+            windows.append([year])
+
+    return windows
+
+def window_label(window: list[int]) -> str:
+
+    return (
+        str(window[0])if len(window) == 1 else f"{window[0]}-{window[-1]}")
+
+
+def run_single_fold(df: pd.DataFrame,window: list[int]) -> dict | None:
+
+    label = window_label(window)
+    cutoff_year = window[0]
+
+    train_df = df.loc[df["Year"] < cutoff_year]
+    test_df = df.loc[df["Year"].isin(window)]
+
+    if len(train_df) < MIN_TRAIN_SIZE:
+        print(
+            f"Skipping fold {label}: "
+            "training data too small."
+        )
+        return None
+
+    # Gradient Boosting model
+    model = GradientBoostingRegressor(
+        **GB_PARAMS
     )
 
-    print(f"\nTrain R2: {metrics['train']['R2']:.4f}")
-    print(f"Test R2 : {metrics['test']['R2']:.4f}")
+    model.fit(
+        train_df[FEATURE_COLS],
+        train_df[RETURN_COL]
+    )
 
-    # Feature Importance replacing Linear Regression Coefficients
-    imp_df = pd.DataFrame([{**dict(zip(FEATURES, model.feature_importances_))}])
-    print("\n=== Feature Importances ===")
-    print(imp_df.round(6).to_string(index=False))
+    # Predict log returns
+    train_pred_change = model.predict(
+        train_df[FEATURE_COLS]
+    )
 
-    # Save output artifacts to project folder
-    metrics_path = MODEL_OUTPUT_PATH / "price_fold_metrics_gb_r0.5.csv"
-    imp_path = MODEL_OUTPUT_PATH / "price_feature_importance_gb_r0.5.csv"
-    
-    pd.DataFrame([{"split": "train", **metrics["train"]},
-                  {"split": "test", **metrics["test"]}]).to_csv(metrics_path, index=False)
-    imp_df.to_csv(imp_path, index=False)
+    test_pred_change = model.predict(
+        test_df[FEATURE_COLS]
+    )
+
+    # Convert log return back to price
+    train_pred_price = (
+        train_df[LAG1_COL]
+        * np.exp(train_pred_change)
+    )
+
+    test_pred_price = (
+        test_df[LAG1_COL]
+        * np.exp(test_pred_change)
+    )
+
+    print(
+        f"\n======== Fold: train < {cutoff_year}, "
+        f"test = {label} "
+        f"(n_train={len(train_df)}, "
+        f"n_test={len(test_df)}) ========"
+    )
+
+    metrics = print_metrics2(
+        f"GradBoost_{label}",
+        train_df[PRICE_COL],
+        train_pred_price,
+        test_df[PRICE_COL],
+        test_pred_price,
+        price_lag1_train=train_df[LAG1_COL],
+        price_lag1_test=test_df[LAG1_COL],
+    )
+
+    fold_summary = {
+        "test_year": label,
+        "n_train": len(train_df),
+        "n_test": len(test_df),
+    }
+
+    for split in ("train", "test"):
+
+        for metric_name, value in (
+            metrics[split].items()
+        ):
+
+            fold_summary[
+                f"{split}_{metric_name}"
+            ] = value
+
+    feature_importance = {
+        "test_year": label
+    }
+
+    feature_importance.update(
+        zip(
+            FEATURE_COLS,
+            model.feature_importances_
+        )
+    )
+
+    return {
+        "fold_summary": fold_summary,
+        "feature_importance": feature_importance,
+        "model": model,
+    }
+
+
+def build_results_table(
+    fold_results: list[dict]
+) -> pd.DataFrame:
+
+    results_df = pd.DataFrame([
+        r["fold_summary"]
+        for r in fold_results
+    ])
+
+    results_df["R2_gap"] = (
+        results_df["train_R2"]
+        - results_df["test_R2"]
+    )
+
+    return results_df
+
+
+def report_results(
+    results_df: pd.DataFrame,
+    importance_df: pd.DataFrame
+) -> None:
+
+    print(
+        "\n---- Fold-by-fold test metrics ----"
+    )
+
+    cols = [
+        "test_year",
+        "n_train",
+        "n_test",
+        "test_MAE",
+        "test_RMSE",
+        "test_MAPE",
+        "test_LogMAE",
+        "test_LogRMSE",
+        "train_R2",
+        "test_R2",
+        "R2_gap",
+    ]
+
+    print(
+        results_df[cols]
+        .round(4)
+        .to_string(index=False)
+    )
+
+    print(
+        "\n---- Feature Importance by Fold ----"
+    )
+
+    print(
+        importance_df
+        .round(6)
+        .to_string(index=False)
+    )
+
+    avg_importance = (
+        importance_df[FEATURE_COLS]
+        .mean()
+        .sort_values(
+            ascending=False
+        )
+    )
+
+    print(
+        "\n---- Average Feature Importance ----"
+    )
+
+    print(
+        avg_importance
+        .round(6)
+        .to_string()
+    )
+
+    summary = results_df[
+        [
+            "test_MAE",
+            "test_RMSE",
+            "test_MAPE",
+            "test_LogMAE",
+            "test_LogRMSE",
+            "train_R2",
+            "test_R2",
+            "R2_gap",
+        ]
+    ].agg(["mean"])
+
+    print(
+        "\n---- Summary across folds (test set) ----"
+    )
+
+    print(
+        summary.round(4)
+    )
+
+
+def persist_outputs(
+    results_df: pd.DataFrame,
+    importance_df: pd.DataFrame,
+    final_model
+) -> None:
+
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    fold_metrics_path = (
+        OUTPUT_DIR
+        / "gradient_boosting_fold_metrics.csv"
+    )
+
+    results_df.to_csv(
+        fold_metrics_path,
+        index=False
+    )
+
+    print(
+        f"\nSaved fold metrics to "
+        f"{fold_metrics_path}"
+    )
+
+    importance_path = (
+        OUTPUT_DIR
+        / "gradient_boosting_feature_importance.csv"
+    )
+
+    importance_df.to_csv(
+        importance_path,
+        index=False
+    )
+
+    print(
+        f"Saved feature importance to "
+        f"{importance_path}"
+    )
+
+    summary_mean = results_df[
+        [
+            "test_MAE",
+            "test_RMSE",
+            "test_MAPE",
+            "test_LogMAE",
+            "test_LogRMSE",
+            "train_R2",
+            "test_R2",
+            "R2_gap",
+        ]
+    ].mean().to_dict()
 
     save_metrics2(
-        "GradientBoosting_Price_r0.5",
-        {"train": metrics["train"], "test": metrics["test"], "anchor_noise_frac": ANCHOR_NOISE_FRAC},
-        filename="price_summary_metrics_gb_r0.5.json",
+        "GradientBoosting_Price",
+        {"mean": summary_mean},
+        filename="gradient_boosting_summary_metrics.json",
     )
-    save_model(model, "gradient_boosting_price_r0.5.pkl")
 
+    save_model(
+        final_model,
+        "gradient_boosting_price.pkl"
+    )
+
+    print(
+        "\nFinal Gradient Boosting model saved "
+        "(trained on Log_Return, "
+        "predictions reconstructed to Price scale)."
+    )
+
+
+def main() -> None:
+
+    print(
+        "Loading cleaned dataset..."
+    )
+
+    df = prepare_dataset()
+
+    years = sorted(
+        df["Year"].unique()
+    )
+
+    print(
+        "\nAvailable years:"
+    )
+
+    print(years)
+
+    windows = make_test_windows(df)
+
+    print(
+        "\n---- Walk-forward folds ----"
+    )
+
+    for window in windows:
+
+        label = window_label(window)
+        cutoff_year = window[0]
+
+        n_train = (
+            df["Year"] < cutoff_year
+        ).sum()
+
+        n_test = (
+            df["Year"].isin(window)
+        ).sum()
+
+        print(
+            f"Test = {label} | "
+            f"n_train = {n_train} | "
+            f"n_test = {n_test}"
+        )
+
+    fold_results = []
+
+    for window in windows:
+
+        result = run_single_fold(
+            df,
+            window
+        )
+
+        if result is not None:
+            fold_results.append(result)
+
+    if not fold_results:
+        raise ValueError(
+            "No valid folds were generated."
+        )
+
+    results_df = build_results_table(
+        fold_results
+    )
+
+    importance_df = pd.DataFrame([r["feature_importance"]for r in fold_results])
+
+    final_model = fold_results[-1]["model"]
+    report_results(results_df, importance_df)
+    persist_outputs(results_df, importance_df, final_model)
 
 if __name__ == "__main__":
     main()
