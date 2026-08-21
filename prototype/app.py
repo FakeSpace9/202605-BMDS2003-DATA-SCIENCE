@@ -39,17 +39,21 @@ st.set_page_config(layout="wide", page_title="Gold Price Predictor", page_icon="
 ALGO_LR = "Linear Regression (Walk-Forward)"
 ALGO_KNN = "KNN Regression (Walk-Forward)"
 ALGO_RF = "Random Forest (Walk-Forward)"
+ALGO_GB = "Gradient Boosting (Walk-Forward)"
 
 MODEL_FILES = {
     ALGO_LR: "linear_regression_walkforward_price.pkl",
     ALGO_KNN: "knn_walkforward_price.pkl",
     ALGO_RF: "random_forest_price.pkl",
+    ALGO_GB: "gradient_boosting_price.pkl"
 }
 
 METRIC_FILES = {
     ALGO_LR: "walkforward_price_summary_metrics.json",
     ALGO_KNN: "walkforward_price_knn_summary_metrics.json",
     ALGO_RF: "random_forest_summary_metrics.json",
+    ALGO_GB: "gradient_boosting_summary_metrics.json"
+    
 }
 
 FEATURES = {
@@ -57,6 +61,7 @@ FEATURES = {
     ALGO_KNN: ["Volume_Momentum", "Volatility_7", "Volatility_30", "RSI_14",
                "daily_return_lag1", "daily_return_lag2"],
     ALGO_RF: ["Volume", "Month", "Day", "Volatility_7"],
+    ALGO_GB: ["Volume", "Volatility_7", "Return_Lag1", "Momentum_7"]
 }
 
 # 5 most relevant plots for a forecasting dashboard, out of the 15 saved
@@ -190,6 +195,19 @@ def run_recursive_forecast(algo, model, seed_prices, seed_volumes, anchor_date, 
             X = np.array([[vol_mom, vol7, vol30, rsi, ret1, ret2]])
             diff = float(model.predict(X)[0])
             pred_price = price_lag1 + diff
+
+        elif algo == ALGO_GB:
+            prices_7 = price_hist[-7:]
+            vol7 = float(np.std(prices_7, ddof=1)) if len(prices_7) > 1 else 0.0
+
+            ret_lag1 = np.log(price_hist[-1] / price_hist[-2])
+            mom7 = (price_hist[-1] / price_hist[-8]) - 1 if len(price_hist) >= 8 else 0.0
+
+            X = np.array([[vol_forecast, vol7, ret_lag1, mom7]])
+
+            pred_log_ret = float(model.predict(X)[0])
+            pred_price = price_hist[-1] * np.exp(pred_log_ret)
+
         else:
             continue
 
@@ -249,10 +267,10 @@ with tab_insights:
                 st.warning(f"Plot not found: {path}")
 
 # ==========================================
-# TAB 2: MODEL COMPARISON (3 algorithms)
+# TAB 2: MODEL COMPARISON (4 algorithms)
 # ==========================================
 with tab_compare:
-    st.subheader("Walk-Forward Validation Metrics -- All 3 Algorithms")
+    st.subheader("Walk-Forward Validation Metrics -- All 4 Algorithms")
 
     rows = {}
     for algo in MODEL_FILES:
@@ -470,6 +488,60 @@ with tab_predict:
 
                 if rf_do_forecast:
                     compute_and_store_forecast(ALGO_RF, prices, [rf_volume], int(rf_ndays))
+
+    # ---------------- Gradient Boosting ----------------
+    with st.expander(f"🚀 {ALGO_GB}", expanded=True):
+        st.caption(f"Features used: {', '.join(FEATURES[ALGO_GB])}")
+        
+        c1 = st.columns(1)[0]
+        with c1:
+            gb_volume = st.number_input("Yesterday's Trading Volume", min_value=0.0, value=51877.0, key="gb_volume")
+            
+        gb_prices_raw = st.text_area(
+            "Last 8 closing prices (comma-separated, oldest → newest; at least 8 required for 7-day Momentum)",
+            value="134000, 136104, 137789, 132595, 133974, 135454, 135771, 135793", 
+            key="gb_prices"
+        )
+
+        bcol1, bcol2, bcol3 = st.columns([1, 1, 1])
+        with bcol1:
+            gb_do_predict = st.button("Predict Next Day", key="gb_btn")
+        with bcol2:
+            gb_ndays = st.number_input("Days ahead", min_value=1, max_value=60, value=10, key="gb_ndays")
+        with bcol3:
+            gb_do_forecast = st.button("Forecast Ahead", key="gb_forecast_btn")
+
+        if gb_do_predict or gb_do_forecast:
+            prices, err = parse_number_list(gb_prices_raw, 8, "Last 8 closing prices")
+            if err:
+                st.error(err)
+            elif models[ALGO_GB] is None:
+                st.error(f"Model file not found: {MODEL_FILES[ALGO_GB]}")
+            else:
+                if gb_do_predict:
+                    vol7 = float(np.std(prices[-7:], ddof=1))
+                    ret_lag1 = float(np.log(prices[-1] / prices[-2]))
+                    mom7 = float((prices[-1] / prices[-8]) - 1)
+                    
+                    X = np.array([[gb_volume, vol7, ret_lag1, mom7]])
+                    pred_log_ret = float(models[ALGO_GB].predict(X)[0])
+                    
+                    # Reconstruct price from log return
+                    pred = prices[-1] * np.exp(pred_log_ret)
+                    st.session_state.pred_results[ALGO_GB] = pred
+
+                    st.success(f"### Predicted Next Closing Price: ${pred:,.2f}")
+                    st.caption(
+                        f"Model predicts log return ({pred_log_ret:+.6f}), "
+                        f"reconstructed from last close (${prices[-1]:,.2f})."
+                    )
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Volatility_7", f"{vol7:,.2f}")
+                    m2.metric("Return_Lag1 (Log)", f"{ret_lag1:.4f}")
+                    m3.metric("Momentum_7", f"{mom7:.2%}")
+
+                if gb_do_forecast:
+                    compute_and_store_forecast(ALGO_GB, prices, [gb_volume], int(gb_ndays))
 
     # ---------------- Comparison of filled-in next-day results ----------------
     st.markdown("---")
