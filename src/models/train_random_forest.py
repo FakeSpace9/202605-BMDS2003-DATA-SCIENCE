@@ -2,17 +2,13 @@
 Random Forest walk-forward price model.
 
 Approach:
-- The model is trained to predict the LOG RETURN
-  (log(Price / Price_Lag1)) instead of the raw price.
-  Tree-based models cannot extrapolate beyond values
-  seen in training, so predicting price directly fails
-  badly whenever the series makes a new high/low in the
-  test period. Predicting the return and reconstructing
-  Price = Price_Lag1 * exp(pred_return) avoids that.
-- Validation uses walk-forward folds: each fold trains on
-  everything before a calendar year and tests on that year
-  (small trailing years get merged so every test fold has
-  a reasonable sample size).
+- Predicts LOG RETURN (log(Price / Price_Lag1)), not raw
+  price, since tree models can't extrapolate past training
+  range. Reconstructed as Price = Price_Lag1 * exp(pred_return).
+- Features: Volume, Month, Day, Volatility_7, Return_Lag1
+  (prior day's log return, as a momentum signal).
+- Walk-forward validation: train on years before a given
+  year, test on that year (small trailing years merged in).
 """
 
 from pathlib import Path
@@ -40,7 +36,8 @@ FEATURE_COLS = [
     "Volume",
     "Month",
     "Day",
-    "Volatility_7"
+    "Volatility_7",
+    "Return_Lag1",
 ]
 
 RF_PARAMS = dict(
@@ -66,7 +63,8 @@ def prepare_dataset() -> pd.DataFrame:
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date").reset_index(drop=True)
 
-    needed = ["Date", "Year", PRICE_COL, LAG1_COL] + FEATURE_COLS + [RETURN_COL]
+    raw_feature_cols = [c for c in FEATURE_COLS if c != "Return_Lag1"]
+    needed = ["Date", "Year", PRICE_COL, LAG1_COL] + raw_feature_cols + [RETURN_COL]   
     missing = [c for c in needed if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
@@ -79,6 +77,9 @@ def prepare_dataset() -> pd.DataFrame:
 
     df[RETURN_COL] = np.log(df[PRICE_COL] / df[LAG1_COL])
     df = df.dropna(subset=[RETURN_COL]).reset_index(drop=True)
+
+    df["Return_Lag1"] = df[RETURN_COL].shift(1)
+    df = df.dropna(subset=["Return_Lag1"]).reset_index(drop=True)
 
     return df
 
@@ -131,8 +132,8 @@ def run_single_fold(df: pd.DataFrame, window: list[int]) -> dict | None:
     train_pred_change = model.predict(train_df[FEATURE_COLS])
     test_pred_change = model.predict(test_df[FEATURE_COLS])
 
-    train_pred_price = train_df[LAG1_COL] + train_pred_change
-    test_pred_price = test_df[LAG1_COL] + test_pred_change
+    train_pred_price = train_df[LAG1_COL] * np.exp(train_pred_change)
+    test_pred_price = test_df[LAG1_COL] * np.exp(test_pred_change)
 
     print(
         f"\n======== Fold: train < {cutoff_year}, test = {label} "
