@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from utils import load_raw_dataset
 
+
 # ============================================================
 # 1. PROJECT PATHS
 # ============================================================
@@ -36,24 +37,53 @@ print(f"Columns: {list(df.columns)}")
 
 # Identify date column
 date_col = next(
-    (c for c in df.columns if c.lower() in ["date", "datetime", "timestamp"]),
+    (
+        c for c in df.columns
+        if c.lower() in ["date", "datetime", "timestamp"]
+    ),
     None
 )
 
 # Identify price column
 price_col = next(
-    (c for c in df.columns if c.lower() in ["price", "gold_price", "gold price", "close"]),
+    (
+        c for c in df.columns
+        if c.lower() in [
+            "price",
+            "gold_price",
+            "gold price",
+            "close"
+        ]
+    ),
     None
 )
 
-# Convert date
-if date_col:
-    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-    df = df.sort_values(date_col).reset_index(drop=True)
 
-# Convert price
+# ============================================================
+# 4. CONVERT DATE AND PRICE
+# ============================================================
+
+if date_col:
+
+    df[date_col] = pd.to_datetime(
+        df[date_col],
+        errors="coerce"
+    )
+
+    # Sort chronologically
+    # IMPORTANT for calculating returns correctly
+    df = (
+        df.sort_values(date_col)
+        .reset_index(drop=True)
+    )
+
+
 if price_col:
-    df[price_col] = pd.to_numeric(df[price_col], errors="coerce")
+
+    df[price_col] = pd.to_numeric(
+        df[price_col],
+        errors="coerce"
+    )
 
 
 if date_col is None:
@@ -64,7 +94,7 @@ if price_col is None:
 
 
 # ============================================================
-# 4. PLOT SETTINGS
+# 5. PLOT SETTINGS
 # ============================================================
 
 plt.rcParams["figure.figsize"] = (10, 6)
@@ -74,245 +104,759 @@ created = []
 
 
 # ============================================================
-# 5. SAVE PLOT FUNCTION
+# 6. SAVE PLOT FUNCTION
 # ============================================================
 
-def save_plot(filename, title, xlabel=None, ylabel=None):
-    """Save the current matplotlib figure into report_assets/plots/."""
+def save_plot(
+    filename,
+    title,
+    xlabel=None,
+    ylabel=None
+):
+    """
+    Save the current matplotlib figure into
+    report_assets/plots/
+    """
+
     plt.title(title)
+
     if xlabel:
         plt.xlabel(xlabel)
+
     if ylabel:
         plt.ylabel(ylabel)
+
     plt.tight_layout()
-    
+
     output_path = PLOT_PATH / filename
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+
+    plt.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches="tight"
+    )
+
     plt.close()
+
     created.append(output_path)
+
     print(f"Saved: {output_path}")
 
 
 # ============================================================
-# 6. NUMERIC COLUMNS & 7. CALCULATE RETURNS
+# 7. NUMERIC COLUMNS
 # ============================================================
 
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+numeric_cols = (
+    df
+    .select_dtypes(include=np.number)
+    .columns
+    .tolist()
+)
+
+
+# ============================================================
+# 8. CALCULATE PRICE MOVEMENT FEATURES
+# ============================================================
 
 if price_col:
-    df["Price_Change"] = df[price_col].diff()
-    df["Daily_Return"] = df[price_col].pct_change() * 100
-    df["Volatility_7"] = df["Daily_Return"].rolling(7).std()
-    df["Volatility_30"] = df["Daily_Return"].rolling(30).std()
+
+    # Daily price change
+    df["Price_Change"] = (
+        df[price_col].diff()
+    )
+
+    # Daily return (%)
+    df["Daily_Return"] = (
+        df[price_col].pct_change() * 100
+    )
+
+    # 7-day rolling volatility
+    df["Volatility_7"] = (
+        df["Daily_Return"]
+        .rolling(7)
+        .std()
+    )
+
+    # 30-day rolling volatility
+    df["Volatility_30"] = (
+        df["Daily_Return"]
+        .rolling(30)
+        .std()
+    )
+
+    # Absolute daily price movement
+    df["Absolute_Price_Change"] = (
+        df["Price_Change"].abs()
+    )
 
 
 # ============================================================
-# GRAPH 1: GOLD PRICE OVER TIME
+# GRAPH 1
+# GOLD PRICE OVER TIME
 # ============================================================
+
 if date_col and price_col:
+
     plt.figure()
-    plt.plot(df[date_col], df[price_col], linewidth=1.2)
-    save_plot("01_gold_price_time_series.png", "Gold Price Over Time", "Date", "Gold Price")
+
+    plt.plot(
+        df[date_col],
+        df[price_col],
+        linewidth=1.2
+    )
+
+    save_plot(
+        "01_gold_price_time_series.png",
+        "Gold Price Over Time",
+        "Date",
+        "Gold Price"
+    )
 
 
 # ============================================================
-# GRAPH 2: GOLD PRICE DISTRIBUTION
+# GRAPH 2
+# GOLD PRICE DISTRIBUTION
 # ============================================================
+
 if price_col:
+
     plt.figure()
-    plt.hist(df[price_col].dropna(), bins=30, color='skyblue', edgecolor='black')
-    save_plot("02_gold_price_distribution.png", "Distribution of Gold Prices", "Gold Price", "Frequency")
+
+    plt.hist(
+        df[price_col].dropna(),
+        bins=30,
+        color="skyblue",
+        edgecolor="black"
+    )
+
+    save_plot(
+        "02_gold_price_distribution.png",
+        "Distribution of Gold Prices",
+        "Gold Price",
+        "Frequency"
+    )
 
 
 # ============================================================
-# GRAPH 3 [NEW]: YEARLY PRICE RANGE (MIN, AVG, MAX)
+# GRAPH 3
+# YEARLY PRICE RANGE
 # ============================================================
+
 if price_col and date_col:
+
     plt.figure()
-    df['Year'] = df[date_col].dt.year
-    yearly_stats = df.groupby('Year')[price_col].agg(['min', 'mean', 'max'])
-    
-    plt.fill_between(yearly_stats.index, yearly_stats['min'], yearly_stats['max'], color='lightblue', alpha=0.5, label='Min-Max Range')
-    plt.plot(yearly_stats.index, yearly_stats['mean'], color='darkblue', marker='o', linewidth=2, label='Average Price')
-    
+
+    df["Year"] = (
+        df[date_col]
+        .dt.year
+    )
+
+    yearly_stats = (
+        df.groupby("Year")[price_col]
+        .agg(["min", "mean", "max"])
+    )
+
+    plt.fill_between(
+        yearly_stats.index,
+        yearly_stats["min"],
+        yearly_stats["max"],
+        color="lightblue",
+        alpha=0.5,
+        label="Min-Max Range"
+    )
+
+    plt.plot(
+        yearly_stats.index,
+        yearly_stats["mean"],
+        color="darkblue",
+        marker="o",
+        linewidth=2,
+        label="Average Price"
+    )
+
     plt.legend()
-    save_plot("03_yearly_price_range.png", "Yearly Gold Price Range (Min, Avg, Max)", "Year", "Gold Price")
+
+    save_plot(
+        "03_yearly_price_range.png",
+        "Yearly Gold Price Range",
+        "Year",
+        "Gold Price"
+    )
 
 
 # ============================================================
-# GRAPH 4 [NEW]: AVERAGE PRICE CHANGE BY MONTH (SEASONALITY)
+# GRAPH 4
+# AVERAGE PRICE CHANGE BY QUARTER
+#
+# Question:
+# Which quarter tends to have stronger price movements?
 # ============================================================
+
 if price_col and date_col:
+
     plt.figure()
-    df['Month_Num'] = df[date_col].dt.month
-    monthly_seasonality = df.groupby('Month_Num')["Price_Change"].mean()
-    
-    # Color green for positive months, red for negative months
-    colors = ['green' if val > 0 else 'red' for val in monthly_seasonality]
-    
-    monthly_seasonality.plot(kind='bar', color=colors, edgecolor='black')
-    plt.xticks(range(0, 12), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], rotation=45)
-    plt.axhline(0, color='black', linewidth=1)
-    
-    save_plot("04_monthly_seasonality.png", "Average Price Change by Month (Seasonality)", "Month", "Average Price Change")
+
+    df["Quarter"] = (
+        df[date_col]
+        .dt.quarter
+    )
+
+    quarterly_change = (
+        df.groupby("Quarter")["Price_Change"]
+        .mean()
+    )
+
+    quarter_names = [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+    ]
+
+    plt.bar(
+        quarter_names,
+        quarterly_change.values,
+        edgecolor="black"
+    )
+
+    plt.axhline(
+        0,
+        color="black",
+        linewidth=1
+    )
+
+    save_plot(
+        "04_quarterly_price_change.png",
+        "Average Gold Price Change by Quarter",
+        "Quarter",
+        "Average Price Change"
+    )
 
 
 # ============================================================
-# GRAPH 5: DAILY RETURN DISTRIBUTION
+# GRAPH 5
+# DAILY RETURN DISTRIBUTION
 # ============================================================
+
 if price_col:
+
     plt.figure()
-    plt.hist(df["Daily_Return"].dropna(), bins=40, color='lightgreen', edgecolor='black')
-    save_plot("05_daily_return_distribution.png", "Distribution of Daily Gold Returns", "Daily Return (%)", "Frequency")
+
+    plt.hist(
+        df["Daily_Return"].dropna(),
+        bins=40,
+        color="lightgreen",
+        edgecolor="black"
+    )
+
+    save_plot(
+        "05_daily_return_distribution.png",
+        "Distribution of Daily Gold Returns",
+        "Daily Return (%)",
+        "Frequency"
+    )
 
 
 # ============================================================
-# GRAPH 6 [NEW]: RISK DISTRIBUTION (HISTOGRAM OF VOLATILITY)
+# GRAPH 6
+# VOLATILITY DISTRIBUTION
 # ============================================================
+
 if price_col:
+
     plt.figure()
-    plt.hist(df["Volatility_7"].dropna(), bins=30, color='purple', edgecolor='black', alpha=0.7)
-    save_plot("06_volatility_distribution.png", "How Often is the Market Highly Volatile?", "7-Day Volatility", "Number of Days")
+
+    plt.hist(
+        df["Volatility_7"].dropna(),
+        bins=30,
+        color="purple",
+        edgecolor="black",
+        alpha=0.7
+    )
+
+    save_plot(
+        "06_volatility_distribution.png",
+        "Distribution of 7-Day Gold Price Volatility",
+        "7-Day Volatility",
+        "Number of Days"
+    )
 
 
 # ============================================================
-# GRAPH 7 [NEW]: AVERAGE VOLATILITY BY YEAR (RISK BY YEAR)
+# GRAPH 7
+# AVERAGE VOLATILITY BY YEAR
 # ============================================================
+
 if price_col and date_col:
+
     plt.figure()
-    yearly_risk = df.groupby('Year')["Volatility_30"].mean()
-    
-    yearly_risk.plot(kind='bar', color='coral', edgecolor='black')
-    
-    save_plot("07_yearly_risk_levels.png", "Average Market Risk (Volatility) by Year", "Year", "Average 30-Day Volatility")
+
+    yearly_risk = (
+        df.groupby("Year")["Volatility_30"]
+        .mean()
+    )
+
+    yearly_risk.plot(
+        kind="bar",
+        color="coral",
+        edgecolor="black"
+    )
+
+    save_plot(
+        "07_yearly_risk_levels.png",
+        "Average Gold Price Volatility by Year",
+        "Year",
+        "Average 30-Day Volatility"
+    )
 
 
 # ============================================================
-# GRAPH 8 [NEW]: NEXT-DAY MOMENTUM (UP DAYS VS DOWN DAYS)
+# GRAPH 8
+# TOP 10 LARGEST DAILY PRICE INCREASES
+#
+# Question:
+# What were the largest daily increases in gold price?
 # ============================================================
-if price_col:
-    plt.figure()
-    
-    # Determine if yesterday was an Up day or Down day
-    valid_dir = df[['Price_Change', 'Daily_Return']].copy().dropna()
-    valid_dir['Yesterday_Direction'] = np.where(valid_dir['Price_Change'].shift(1) > 0, 'Up Yesterday', 'Down Yesterday')
-    valid_dir = valid_dir.dropna() # Drop the first NaN row
-    
-    momentum = valid_dir.groupby('Yesterday_Direction')['Daily_Return'].mean()
-    
-    momentum.plot(kind='bar', color=['red', 'green'], edgecolor='black')
-    plt.axhline(0, color='black', linewidth=1)
-    plt.xticks(rotation=0)
-    
-    save_plot("08_next_day_momentum.png", "Average Today's Return based on Yesterday's Trend", "Yesterday's Market Direction", "Average Daily Return Today (%)")
 
-
-# ============================================================
-# GRAPH 9: PRICE VS 30-DAY MOVING AVERAGE
-# ============================================================
-if price_col:
-    moving_average_30 = df[price_col].rolling(30).mean()
-    plt.figure()
-    plt.plot(df[price_col], label="Gold Price", linewidth=1)
-    plt.plot(moving_average_30, label="30-Day Moving Average", linewidth=1.5, color='orange')
-    plt.legend()
-    save_plot("09_price_vs_ma30.png", "Gold Price and 30-Day Moving Average", "Observation", "Gold Price")
-
-
-# ============================================================
-# GRAPH 10: MONTHLY AVERAGE GOLD PRICE
-# ============================================================
-if date_col and price_col:
-    monthly_price = df.set_index(date_col)[price_col].resample("ME").mean()
-    plt.figure()
-    plt.plot(monthly_price.index, monthly_price.values, linewidth=1.2, color='teal')
-    save_plot("10_monthly_average_price.png", "Monthly Average Gold Price", "Month", "Average Gold Price")
-
-
-# ============================================================
-# GRAPH 11: MONTHLY GOLD PRICE VOLATILITY
-# ============================================================
-if date_col and price_col:
-    monthly_volatility = df.set_index(date_col)["Daily_Return"].resample("ME").std() * 100
-    plt.figure()
-    plt.bar(monthly_volatility.index, monthly_volatility.values, width=20, color='crimson')
-    save_plot("11_monthly_volatility.png", "Monthly Gold Price Volatility", "Month", "Volatility (%)")
-
-
-# ============================================================
-# GRAPH 12: YEARLY AVERAGE GOLD PRICE
-# ============================================================
-if date_col and price_col:
-    yearly_price = df.set_index(date_col)[price_col].resample("YE").mean()
-    plt.figure()
-    plt.bar(yearly_price.index.year.astype(str), yearly_price.values, color='gold', edgecolor='black')
-    save_plot("12_yearly_average_price.png", "Yearly Average Gold Price", "Year", "Average Gold Price")
-
-
-# ============================================================
-# GRAPH 13 [NEW]: RETURNS BY DAY OF THE WEEK
-# ============================================================
 if price_col and date_col:
+
+    largest_increases = (
+        df[
+            [date_col, "Price_Change"]
+        ]
+        .dropna()
+        .nlargest(
+            10,
+            "Price_Change"
+        )
+        .sort_values(
+            "Price_Change"
+        )
+    )
+
     plt.figure()
-    
-    # Get Day of Week (0 = Monday, 4 = Friday)
-    df['Day_of_Week'] = df[date_col].dt.dayofweek
-    
-    # Group by day and calculate mean return
-    dow_returns = df.groupby('Day_of_Week')['Daily_Return'].mean()
-    
-    # Plot
-    colors = ['green' if val > 0 else 'red' for val in dow_returns]
-    dow_returns.plot(kind='bar', color=colors, edgecolor='black')
-    plt.xticks(range(5), ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], rotation=0)
-    plt.axhline(0, color='black', linewidth=1)
-    
-    save_plot("13_day_of_week_returns.png", "Average Daily Return by Day of the Week", "Day of the Week", "Average Return (%)")
+
+    plt.barh(
+        largest_increases[
+            date_col
+        ].dt.strftime("%Y-%m-%d"),
+        largest_increases[
+            "Price_Change"
+        ],
+        edgecolor="black"
+    )
+
+    save_plot(
+        "08_top_10_price_increases.png",
+        "Top 10 Largest Daily Gold Price Increases",
+        "Date",
+        "Price Increase"
+    )
 
 
 # ============================================================
-# GRAPH 14 [NEW]: RETURN BY VOLUME TIERS
+# GRAPH 9
+# TOP 10 LARGEST DAILY PRICE DECREASES
+#
+# Question:
+# What were the largest daily decreases in gold price?
 # ============================================================
-volume_col = next((c for c in numeric_cols if "volume" in c.lower()), None)
 
-if volume_col and price_col:
+if price_col and date_col:
+
+    largest_decreases = (
+        df[
+            [date_col, "Price_Change"]
+        ]
+        .dropna()
+        .nsmallest(
+            10,
+            "Price_Change"
+        )
+        .sort_values(
+            "Price_Change",
+            ascending=False
+        )
+    )
+
     plt.figure()
-    
-    valid_vol = df[[volume_col, "Daily_Return"]].dropna().copy()
-    
-    # Divide Volume into 3 buckets: Low, Medium, High
-    valid_vol['Volume_Tier'] = pd.qcut(valid_vol[volume_col], q=3, labels=['Low Volume', 'Medium Volume', 'High Volume'])
-    
-    vol_impact = valid_vol.groupby('Volume_Tier')['Daily_Return'].mean()
-    
-    colors = ['green' if val > 0 else 'red' for val in vol_impact]
-    vol_impact.plot(kind='bar', color=colors, edgecolor='black')
-    plt.axhline(0, color='black', linewidth=1)
-    plt.xticks(rotation=0)
-    
-    save_plot("14_return_by_volume.png", "Average Price Return by Trading Volume Levels", "Trading Volume Tier", "Average Return (%)")
+
+    plt.barh(
+        largest_decreases[
+            date_col
+        ].dt.strftime("%Y-%m-%d"),
+        largest_decreases[
+            "Price_Change"
+        ],
+        edgecolor="black"
+    )
+
+    save_plot(
+        "09_top_10_price_decreases.png",
+        "Top 10 Largest Daily Gold Price Decreases",
+        "Date",
+        "Price Decrease"
+    )
+
+# ============================================================
+# GRAPH 10
+# YEARLY GOLD PRICE CHANGE
+#
+# Question:
+# How much did the gold price change from the beginning
+# to the end of each year?
+# ============================================================
+
+if date_col and price_col:
+
+    yearly_open = (
+        df
+        .set_index(date_col)[price_col]
+        .resample("YE")
+        .first()
+    )
+
+    yearly_close = (
+        df
+        .set_index(date_col)[price_col]
+        .resample("YE")
+        .last()
+    )
+
+    yearly_change = (
+        yearly_close - yearly_open
+    )
+
+    plt.figure()
+
+    plt.bar(
+        yearly_change.index.year.astype(str),
+        yearly_change.values,
+        edgecolor="black"
+    )
+
+    plt.axhline(
+        0,
+        color="black",
+        linewidth=1
+    )
+
+    save_plot(
+        "10_yearly_price_change.png",
+        "Yearly Gold Price Change",
+        "Year",
+        "Price Change"
+    )
 
 
 # ============================================================
-# GRAPH 15: CORRELATION MATRIX
+# GRAPH 11
+# MONTHLY POSITIVE VS NEGATIVE DAYS
+#
+# Question:
+# Do gold prices increase or decrease more often
+# during different months?
 # ============================================================
+
+if price_col and date_col:
+
+    monthly_data = (
+        df[
+            [
+                date_col,
+                "Daily_Return"
+            ]
+        ]
+        .dropna()
+        .copy()
+    )
+
+    monthly_data["Month"] = (
+        monthly_data[date_col]
+        .dt.month
+    )
+
+    monthly_data["Direction"] = np.where(
+        monthly_data["Daily_Return"] > 0,
+        "Positive",
+        "Negative"
+    )
+
+    monthly_direction = (
+        monthly_data
+        .groupby(
+            ["Month", "Direction"]
+        )
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    # Make sure both columns exist
+    if "Positive" not in monthly_direction.columns:
+        monthly_direction["Positive"] = 0
+
+    if "Negative" not in monthly_direction.columns:
+        monthly_direction["Negative"] = 0
+
+    monthly_direction = (
+        monthly_direction[
+            ["Positive", "Negative"]
+        ]
+    )
+
+    month_names = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec"
+    ]
+
+    # Make sure all 12 months appear
+    monthly_direction = (
+        monthly_direction
+        .reindex(
+            range(1, 13),
+            fill_value=0
+        )
+    )
+
+    monthly_direction.index = month_names
+
+    plt.figure()
+
+    monthly_direction.plot(
+        kind="bar",
+        stacked=True,
+        ax=plt.gca(),
+        edgecolor="black"
+    )
+
+    plt.legend(
+        title="Daily Movement"
+    )
+
+    plt.xticks(
+        rotation=45
+    )
+
+    save_plot(
+        "11_monthly_positive_negative_days.png",
+        "Positive and Negative Gold Price Days by Month",
+        "Month",
+        "Number of Days"
+    )
+
+
+# ============================================================
+# GRAPH 12
+# YEARLY AVERAGE GOLD PRICE
+# ============================================================
+
+if date_col and price_col:
+
+    yearly_price = (
+        df
+        .set_index(date_col)[price_col]
+        .resample("YE")
+        .mean()
+    )
+
+    plt.figure()
+
+    plt.bar(
+        yearly_price.index.year.astype(str),
+        yearly_price.values,
+        color="gold",
+        edgecolor="black"
+    )
+
+    save_plot(
+        "12_yearly_average_price.png",
+        "Yearly Average Gold Price",
+        "Year",
+        "Average Gold Price"
+    )
+
+
+# ============================================================
+# GRAPH 13
+# YEARLY GOLD PRICE GROWTH
+#
+# Question:
+# Which years experienced the largest price increases?
+# ============================================================
+
+if date_col and price_col:
+
+    yearly_avg = (
+        df
+        .set_index(date_col)[price_col]
+        .resample("YE")
+        .mean()
+    )
+
+    yearly_growth = (
+        yearly_avg
+        .pct_change()
+        * 100
+    ).dropna()
+
+    plt.figure()
+
+    plt.bar(
+        yearly_growth.index.year.astype(str),
+        yearly_growth.values,
+        edgecolor="black"
+    )
+
+    plt.axhline(
+        0,
+        color="black",
+        linewidth=1
+    )
+
+    save_plot(
+        "13_yearly_price_growth.png",
+        "Yearly Gold Price Growth",
+        "Year",
+        "Price Growth (%)"
+    )
+
+
+# ============================================================
+# GRAPH 14
+# AVERAGE MONTHLY GOLD PRICE
+#
+# Question:
+# Which months have higher or lower average gold prices?
+# ============================================================
+
+if date_col and price_col:
+
+    monthly_average = (
+        df
+        .assign(
+            Month=df[date_col].dt.month
+        )
+        .groupby("Month")[price_col]
+        .mean()
+    )
+
+    # Make sure all months are included
+    monthly_average = (
+        monthly_average
+        .reindex(range(1, 13))
+    )
+
+    month_names = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec"
+    ]
+
+    plt.figure()
+
+    plt.bar(
+        month_names,
+        monthly_average.values,
+        edgecolor="black"
+    )
+
+    save_plot(
+        "14_average_monthly_price.png",
+        "Average Gold Price by Month",
+        "Month",
+        "Average Gold Price"
+    )
+
+
+# ============================================================
+# GRAPH 15
+# CORRELATION MATRIX
+# ============================================================
+
 if len(numeric_cols) >= 2:
-    correlation_cols = df.select_dtypes(include=np.number).columns.tolist()
-    corr = df[correlation_cols].corr()
 
-    plt.figure(figsize=(10, 8))
-    plt.imshow(corr, interpolation="nearest", aspect="auto", cmap="coolwarm")
-    plt.colorbar(label="Correlation")
-    plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
-    plt.yticks(range(len(corr.columns)), corr.columns)
-    plt.title("Correlation Matrix of Numeric Features")
+    correlation_cols = (
+        df
+        .select_dtypes(include=np.number)
+        .columns
+        .tolist()
+    )
+
+    corr = (
+        df[correlation_cols]
+        .corr()
+    )
+
+    plt.figure(
+        figsize=(10, 8)
+    )
+
+    plt.imshow(
+        corr,
+        interpolation="nearest",
+        aspect="auto",
+        cmap="coolwarm"
+    )
+
+    plt.colorbar(
+        label="Correlation"
+    )
+
+    plt.xticks(
+        range(len(corr.columns)),
+        corr.columns,
+        rotation=90
+    )
+
+    plt.yticks(
+        range(len(corr.columns)),
+        corr.columns
+    )
+
+    plt.title(
+        "Correlation Matrix of Numeric Features"
+    )
+
     plt.tight_layout()
 
-    output_path = PLOT_PATH / "15_correlation_matrix.png"
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    output_path = (
+        PLOT_PATH /
+        "15_correlation_matrix.png"
+    )
+
+    plt.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches="tight"
+    )
+
     plt.close()
+
     created.append(output_path)
-    print(f"Saved: {output_path}")
+
+    print(
+        f"Saved: {output_path}"
+    )
 
 
 # ============================================================
@@ -324,16 +868,36 @@ print("=" * 60)
 print("GRAPH GENERATION COMPLETE")
 print("=" * 60)
 
-print(f"Dataset shape : {df.shape}")
-print(f"Date column   : {date_col}")
-print(f"Price column  : {price_col}")
-print(f"Graphs created: {len(created)}")
-print(f"Output folder : {PLOT_PATH}")
+print(
+    f"Dataset shape : {df.shape}"
+)
+
+print(
+    f"Date column   : {date_col}"
+)
+
+print(
+    f"Price column  : {price_col}"
+)
+
+print(
+    f"Graphs created: {len(created)}"
+)
+
+print(
+    f"Output folder : {PLOT_PATH}"
+)
 
 print()
 print("Generated files:")
 
-for i, path in enumerate(created, start=1):
-    print(f"{i:02d}. {path.name}")
+for i, path in enumerate(
+    created,
+    start=1
+):
+
+    print(
+        f"{i:02d}. {path.name}"
+    )
 
 print("=" * 60)
