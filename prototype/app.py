@@ -169,7 +169,6 @@ def run_recursive_forecast(algo, model, seed_prices, seed_volumes, anchor_date, 
 
         if algo == ALGO_LR:
             ma7 = float(np.mean(prices_7))
-            # Must pass as DataFrame with column names for Scikit-Learn Pipelines
             X = pd.DataFrame([[vol_to_use, month, day, vol7, ma7]], columns=FEATURES[ALGO_LR])
             pred_price = float(model.predict(X)[0])
 
@@ -210,19 +209,19 @@ def run_recursive_forecast(algo, model, seed_prices, seed_volumes, anchor_date, 
     return dates, preds
 
 
-def compute_and_store_forecast(algo, seed_prices, seed_volumes, n_days, start_month=None, start_day=None):
+def compute_and_store_forecast(algo, seed_prices, seed_volumes, n_days, start_year=None, start_month=None, start_day=None):
     model = models.get(algo)
     if model is None:
         st.error(f"Model file not found: {MODEL_FILES[algo]}")
         return
 
     now = datetime.now()
-    year = now.year
+    y = start_year if start_year is not None else now.year
     m = start_month if start_month is not None else now.month
     d = start_day if start_day is not None else now.day
     
     try:
-        anchor_date = pd.Timestamp(year=year, month=m, day=d)
+        anchor_date = pd.Timestamp(year=y, month=m, day=d)
     except ValueError:
         anchor_date = pd.Timestamp(now.date())
 
@@ -305,13 +304,16 @@ with tab_predict:
     # ---------------- Linear Regression ----------------
     with st.expander(f"📏 {ALGO_LR}", expanded=True):
         st.caption(f"Features used: {', '.join(FEATURES[ALGO_LR])}")
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             lr_volume = st.number_input("Yesterday's Trading Volume", min_value=0.0, value=51877.0, key="lr_volume")
         with c2:
-            lr_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12, value=None, key="lr_month")
+            lr_year = st.number_input("Year [blank = today]", min_value=1900, max_value=2100, value=None, key="lr_year")
         with c3:
+            lr_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12, value=None, key="lr_month")
+        with c4:
             lr_day = st.number_input("Day (1-31) [blank = today]", min_value=1, max_value=31, value=None, key="lr_day")
+            
         lr_prices_raw = st.text_area(
             "Last 7 closing prices (comma-separated, oldest → newest)",
             value="136104, 137789, 132595, 133974, 135454, 135771, 135793", key="lr_prices")
@@ -333,6 +335,7 @@ with tab_predict:
             elif models[ALGO_LR] is None:
                 st.error(f"Model file not found: {MODEL_FILES[ALGO_LR]}")
             else:
+                final_year = int(lr_year) if lr_year is not None else datetime.now().year
                 final_month = int(lr_month) if lr_month is not None else datetime.now().month
                 final_day = int(lr_day) if lr_day is not None else datetime.now().day
                 
@@ -351,14 +354,23 @@ with tab_predict:
                     m1, m2, m3 = st.columns(3)
                     m1.metric("MA_7", f"{ma7:,.2f}")
                     m2.metric("Volatility_7", f"{vol7:,.2f}")
-                    m3.metric("Month / Day used", f"{final_month} / {final_day}")
+                    m3.metric("Date used (Y/M/D)", f"{final_year}/{final_month}/{final_day}")
 
                 if lr_do_forecast:
-                    compute_and_store_forecast(ALGO_LR, prices, [lr_volume], int(lr_ndays), final_month, final_day)
+                    compute_and_store_forecast(ALGO_LR, prices, [lr_volume], int(lr_ndays), final_year, final_month, final_day)
 
     # ---------------- KNN Regression ----------------
     with st.expander(f"📊 {ALGO_KNN}", expanded=True):
         st.caption(f"Features used: {', '.join(FEATURES[ALGO_KNN])}")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            knn_year = st.number_input("Year [blank = today]", min_value=1900, max_value=2100, value=None, key="knn_year")
+        with c2:
+            knn_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12, value=None, key="knn_month")
+        with c3:
+            knn_day = st.number_input("Day (1-31) [blank = today]", min_value=1, max_value=31, value=None, key="knn_day")
+
         knn_prices_raw = st.text_area(
             "Last 30 closing prices (comma-separated, oldest → newest)",
             value=", ".join(str(128000.0 + (i * 250)) for i in range(30)), key="knn_prices")
@@ -385,6 +397,10 @@ with tab_predict:
             else:
                 prices_30 = prices[-30:]
                 vols_10 = vols[-10:]
+                
+                final_year = int(knn_year) if knn_year is not None else datetime.now().year
+                final_month = int(knn_month) if knn_month is not None else datetime.now().month
+                final_day = int(knn_day) if knn_day is not None else datetime.now().day
 
                 if knn_do_predict:
                     prices_7 = prices_30[-7:]
@@ -410,17 +426,19 @@ with tab_predict:
                     m3.metric("Volume Momentum", f"{vol_mom:.3f}")
 
                 if knn_do_forecast:
-                    compute_and_store_forecast(ALGO_KNN, prices_30, vols_10, int(knn_ndays))
+                    compute_and_store_forecast(ALGO_KNN, prices_30, vols_10, int(knn_ndays), final_year, final_month, final_day)
 
     # ---------------- Random Forest ----------------
     with st.expander(f"🌲 {ALGO_RF}", expanded=True):
         st.caption(f"Features used: {', '.join(FEATURES[ALGO_RF])}")
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             rf_volume = st.number_input("Yesterday's Trading Volume", min_value=0.0, value=51877.0, key="rf_volume")
         with c2:
-            rf_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12, value=None, key="rf_month")
+            rf_year = st.number_input("Year [blank = today]", min_value=1900, max_value=2100, value=None, key="rf_year")
         with c3:
+            rf_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12, value=None, key="rf_month")
+        with c4:
             rf_day = st.number_input("Day (1-31) [blank = today]", min_value=1, max_value=31, value=None, key="rf_day")
             
         rf_prices_raw = st.text_area(
@@ -442,6 +460,7 @@ with tab_predict:
             elif models[ALGO_RF] is None:
                 st.error(f"Model file not found: {MODEL_FILES[ALGO_RF]}")
             else:
+                final_year = int(rf_year) if rf_year is not None else datetime.now().year
                 final_month = int(rf_month) if rf_month is not None else datetime.now().month
                 final_day = int(rf_day) if rf_day is not None else datetime.now().day
                 
@@ -463,18 +482,24 @@ with tab_predict:
                     m1, m2, m3 = st.columns(3)
                     m1.metric("Volatility_7", f"{vol7:,.2f}")
                     m2.metric("Return_Lag1", f"{return_lag1:+.6f}")
-                    m3.metric("Month / Day used", f"{final_month} / {final_day}")
+                    m3.metric("Date used (Y/M/D)", f"{final_year}/{final_month}/{final_day}")
 
                 if rf_do_forecast:
-                    compute_and_store_forecast(ALGO_RF, prices, [rf_volume], int(rf_ndays), final_month, final_day)
+                    compute_and_store_forecast(ALGO_RF, prices, [rf_volume], int(rf_ndays), final_year, final_month, final_day)
 
     # ---------------- Gradient Boosting ----------------
     with st.expander(f"🚀 {ALGO_GB}", expanded=True):
         st.caption(f"Features used: {', '.join(FEATURES[ALGO_GB])}")
         
-        c1 = st.columns(1)[0]
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             gb_volume = st.number_input("Yesterday's Trading Volume", min_value=0.0, value=51877.0, key="gb_volume")
+        with c2:
+            gb_year = st.number_input("Year [blank = today]", min_value=1900, max_value=2100, value=None, key="gb_year")
+        with c3:
+            gb_month = st.number_input("Month (1-12) [blank = today]", min_value=1, max_value=12, value=None, key="gb_month")
+        with c4:
+            gb_day = st.number_input("Day (1-31) [blank = today]", min_value=1, max_value=31, value=None, key="gb_day")
             
         gb_prices_raw = st.text_area(
             "Last 8 closing prices (comma-separated, oldest → newest)",
@@ -497,6 +522,10 @@ with tab_predict:
             elif models[ALGO_GB] is None:
                 st.error(f"Model file not found: {MODEL_FILES[ALGO_GB]}")
             else:
+                final_year = int(gb_year) if gb_year is not None else datetime.now().year
+                final_month = int(gb_month) if gb_month is not None else datetime.now().month
+                final_day = int(gb_day) if gb_day is not None else datetime.now().day
+
                 if gb_do_predict:
                     vol7 = float(np.std(prices[-7:], ddof=1))
                     ret_lag1 = float(np.log(prices[-1] / prices[-2]))
@@ -518,7 +547,7 @@ with tab_predict:
                     m3.metric("Momentum_7", f"{mom7:.2%}")
 
                 if gb_do_forecast:
-                    compute_and_store_forecast(ALGO_GB, prices, [gb_volume], int(gb_ndays))
+                    compute_and_store_forecast(ALGO_GB, prices, [gb_volume], int(gb_ndays), final_year, final_month, final_day)
 
     # ---------------- Comparison & Charts ----------------
     st.markdown("---")
