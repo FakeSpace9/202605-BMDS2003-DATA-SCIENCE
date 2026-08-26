@@ -142,7 +142,8 @@ def main():
     
     summary = results_df[["test_MAE", "test_RMSE", "test_MAPE",
                            "test_LogMAE", "test_LogRMSE", "train_R2", "test_R2", "R2_gap"]].agg(["mean", "std", "median"])
-    
+    print("\n=== Summary across folds (test set) ===")
+    print(summary.round(4))
     results_path = MODEL_OUTPUT_PATH / "fold_metrics"/"walkforward_price_fold_metrics.csv"
     coef_path = MODEL_OUTPUT_PATH / "feature_coefficient"/"walkforward_price_coefficients.csv"
     results_path.parent.mkdir(parents=True, exist_ok=True)
