@@ -82,11 +82,6 @@ def main():
 
         X_train, y_train_raw = train_fold[valid_features], train_fold[TARGET]
         X_test, y_test_raw = test_fold[valid_features], test_fold[TARGET]
-
-        # ---------------------------------------------------------
-        # CRITICAL FIX: Detrending (Differencing) the Target
-        # Predict the price change instead of the absolute price
-        # ---------------------------------------------------------
         y_train_diff = y_train_raw - train_fold["Price_Lag1"]
         
         model = Pipeline([

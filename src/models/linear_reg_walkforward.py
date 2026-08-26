@@ -51,11 +51,7 @@ def main():
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date").reset_index(drop=True)
 
-    # ---------------------------------------------------------
-    # CRITICAL FIX: Un-scale the 'Volume' column back to raw numbers.
-    # The pipeline below needs to learn how to scale RAW numbers 
-    # so it matches what users type into Streamlit.
-    # ---------------------------------------------------------
+
     scaler_path = MODEL_OUTPUT_PATH / "scaler.pkl"
     if scaler_path.exists():
         global_scaler = joblib.load(scaler_path)
