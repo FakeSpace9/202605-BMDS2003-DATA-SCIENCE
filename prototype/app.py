@@ -50,15 +50,15 @@ FEATURES = {
 
 PLOT_SELECTION = [
     ("01_gold_price_time_series.png", "Gold Price Over Time",
-     "Long-run closing-price trend that motivates the forecasting problem."),
-    ("09_price_vs_ma30.png", "Price vs 30-Day Moving Average",
-     "Price tracking its moving average -- the same signal MA_7 captures for the Linear Regression model."),
-    ("06_volatility_distribution.png", "Volatility Distribution",
-     "Spread of rolling volatility -- the Volatility_7 / Volatility_30 features used by all three models."),
-    ("04_monthly_seasonality.png", "Monthly Seasonality",
-     "Average price behaviour by calendar month -- the seasonal signal behind the Month feature."),
+     "The fundamental long-term macro trend of gold prices that motivates the forecasting problem."),
+    ("11_monthly_positive_negative_days.png", "Positive and Negative Days by Month",
+     "Explores whether prices historically increase or decrease more often in specific months, justifying the 'Month' feature."),
+    ("06_volatility_distribution.png", "7-Day Volatility Distribution",
+     "Shows the spread of short-term rolling volatility—a key feature (Volatility_7) used across all four algorithms."),
+    ("05_daily_return_distribution.png", "Daily Return Distribution",
+     "Visualizes the spread of daily returns, which models like Gradient Boosting and Random Forest rely on as lagged input features."),
     ("15_correlation_matrix.png", "Feature Correlation Matrix",
-     "Correlation between engineered features -- shows why each model was built on a different feature set."),
+     "Displays the mathematical relationships between numeric variables, guiding the overall feature selection strategy.")
 ]
 
 METRIC_COLUMN_ORDER = ["test_MAE", "test_RMSE", "test_MAPE", "test_LogMAE",
