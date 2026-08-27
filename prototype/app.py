@@ -137,6 +137,17 @@ raw_eda_df = load_raw_eda_data()
 # ==========================================
 # 2. SHARED FEATURE-ENGINEERING HELPERS
 # ==========================================
+
+def extract_importances(model):
+    """Safely extracts feature importances, handling Scikit-learn Pipelines if used."""
+    if hasattr(model, 'feature_importances_'):
+        return model.feature_importances_
+    if hasattr(model, 'steps'):
+        final_step = model.steps[-1][1]
+        if hasattr(final_step, 'feature_importances_'):
+            return final_step.feature_importances_
+    return None
+
 def calculate_rsi(prices, window=14):
     s = pd.Series(prices, dtype=float)
     delta = s.diff()
@@ -265,6 +276,16 @@ with tab_insights:
             event1 = st.plotly_chart(fig1, use_container_width=True, on_select="rerun", key="plot_price_time", config=PLOTLY_CONFIG)
             st.caption("The fundamental long-term macro trend of gold prices that motivates the forecasting problem.")
             
+            pts = _selected_points(event1)
+            if pts:
+                p = pts[0]
+                ma7, ma30, vol7 = p["customdata"]
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Date:", pd.to_datetime(p["x"]).strftime("%Y-%m-%d"))
+                c2.metric("Price:", f"{p['y']:,.0f}")
+                c3.metric("MA_7:", f"{ma7:,.0f}")
+                c4.metric("MA_30:", f"{ma30:,.0f}")
+            
         with col2:
             st.markdown("**Positive and Negative Days by Month**")
             month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -375,11 +396,36 @@ with tab_compare:
         if err_cols:
             st.bar_chart(comp_df[err_cols])
 
+    # FANCY FEATURE 3: MODEL EXPLAINABILITY
+    st.markdown("---")
+    st.markdown("### 🧠 Model Explainability (Feature Importance)")
+    st.write("Understand the internal logic of our tree-based models. These charts show exactly which input feature had the highest mathematical influence on the predictions during training.")
+    
+    col_rf, col_gb = st.columns(2)
+    with col_rf:
+        if models[ALGO_RF] is not None:
+            rf_imp = extract_importances(models[ALGO_RF])
+            if rf_imp is not None:
+                fig_rf = go.Figure(go.Bar(x=rf_imp, y=FEATURES[ALGO_RF], orientation='h', marker_color='forestgreen'))
+                fig_rf.update_layout(title="Random Forest Feature Importance", margin=dict(l=10, r=10, t=30, b=10), yaxis=dict(autorange="reversed"))
+                st.plotly_chart(fig_rf, use_container_width=True, config=PLOTLY_CONFIG)
+            else:
+                st.info("Feature importance not available for the Random Forest pipeline.")
+                
+    with col_gb:
+        if models[ALGO_GB] is not None:
+            gb_imp = extract_importances(models[ALGO_GB])
+            if gb_imp is not None:
+                fig_gb = go.Figure(go.Bar(x=gb_imp, y=FEATURES[ALGO_GB], orientation='h', marker_color='firebrick'))
+                fig_gb.update_layout(title="Gradient Boosting Feature Importance", margin=dict(l=10, r=10, t=30, b=10), yaxis=dict(autorange="reversed"))
+                st.plotly_chart(fig_gb, use_container_width=True, config=PLOTLY_CONFIG)
+            else:
+                st.info("Feature importance not available for the Gradient Boosting pipeline.")
+
 # ==========================================
-# TAB 3: PREDICT & FORECAST (Restructured)
+# TAB 3: PREDICT & FORECAST
 # ==========================================
 with tab_predict:
-    # Initialize session state for storing next-day predictions
     if "pred_results" not in st.session_state:
         st.session_state.pred_results = {}
 
@@ -413,30 +459,10 @@ with tab_predict:
             day_val = st.number_input("Day (1-31) [blank=today]", min_value=1, max_value=31, value=None, help="Sets the starting day. Also used as a mathematical feature by LR and RF.")
 
         st.markdown("#### Historical Prices & Volumes")
-        # Render the text areas, graying out those not associated with the selected algorithm
-        prices_7_val = st.text_area(
-            "Last 7 closing prices (Linear Regression & Random Forest)", 
-            value="136104, 137789, 132595, 133974, 135454, 135771, 135793", 
-            disabled=not en_lr_rf, help="Required by LR and RF to compute Volatility_7, Moving Averages, and Returns."
-        )
-        
-        prices_8_val = st.text_area(
-            "Last 8 closing prices (Gradient Boosting)", 
-            value="134000, 136104, 137789, 132595, 133974, 135454, 135771, 135793", 
-            disabled=not en_gb, help="Required by GB to compute 7-day Momentum and Volatility."
-        )
-        
-        prices_30_val = st.text_area(
-            "Last 30 closing prices (KNN)", 
-            value=", ".join(str(128000.0 + (i * 250)) for i in range(30)), 
-            disabled=not en_knn, help="Required by KNN to calculate RSI_14, Volatility_30, and multiple lags."
-        )
-        
-        vols_10_val = st.text_area(
-            "Last 10 trading volumes (KNN)", 
-            value=", ".join(str(45000.0 + (i * 500)) for i in range(10)), 
-            disabled=not en_knn, help="Required by KNN to calculate Volume Momentum."
-        )
+        prices_7_val = st.text_area("Last 7 closing prices (Linear Regression & Random Forest)", value="136104, 137789, 132595, 133974, 135454, 135771, 135793", disabled=not en_lr_rf)
+        prices_8_val = st.text_area("Last 8 closing prices (Gradient Boosting)", value="134000, 136104, 137789, 132595, 133974, 135454, 135771, 135793", disabled=not en_gb)
+        prices_30_val = st.text_area("Last 30 closing prices (KNN)", value=", ".join(str(128000.0 + (i * 250)) for i in range(30)), disabled=not en_knn)
+        vols_10_val = st.text_area("Last 10 trading volumes (KNN)", value=", ".join(str(45000.0 + (i * 500)) for i in range(10)), disabled=not en_knn)
 
         st.markdown("#### Actions")
         bc1, bc2, bc3 = st.columns([1.5, 1, 1.5])
@@ -447,9 +473,8 @@ with tab_predict:
         with bc3:
             btn_forecast = st.button("Forecast Ahead", use_container_width=True)
 
-    # 3. Process Button Clicks (Calculate and show detailed metrics for the *current run*)
+    # 3. Process Button Clicks
     if btn_predict or btn_forecast:
-        # Safely parse the exact date from user input
         now = datetime.now()
         start_year = int(year_val) if year_val is not None else now.year
         start_month = int(month_val) if month_val is not None else now.month
@@ -458,11 +483,10 @@ with tab_predict:
         try:
             anchor_date = pd.Timestamp(year=start_year, month=start_month, day=start_day)
         except ValueError:
-            st.error("Invalid date provided (e.g. February 31st). Defaulting to today's date.")
+            st.error("Invalid date provided. Defaulting to today's date.")
             anchor_date = pd.Timestamp(now.date())
             start_month, start_day = now.month, now.day
 
-        # Extract correct data inputs based on selection
         prices, vols = None, None
         errs = []
 
@@ -481,45 +505,33 @@ with tab_predict:
             if err2: errs.append(err2)
             vols = vols_list
 
-        # Execute if no validation errors
         if errs:
             for e in errs: st.error(e)
         elif models[selected_algo] is None:
             st.error(f"Model file not found: {MODEL_FILES[selected_algo]}")
         else:
-            # SINGLE DAY PREDICTION (Always calculate and show if either button is clicked)
+            # SINGLE DAY PREDICTION
             target_date = next_business_day(anchor_date).strftime('%A, %b %d, %Y')
             st.markdown(f"### 3. Detailed Results: **{selected_algo}**")
             st.markdown(f"**Target Date:** {target_date}")
             
+            # Helper logic to extract price_lag1 for the Trading Signal delta
+            price_lag1 = prices[-1] if selected_algo != ALGO_KNN else prices[-1]
+
             if selected_algo == ALGO_LR:
                 ma7 = float(np.mean(prices))
                 vol7 = float(np.std(prices, ddof=1))
                 X = pd.DataFrame([[vol_val, start_month, start_day, vol7, ma7]], columns=FEATURES[ALGO_LR])
                 pred = float(models[ALGO_LR].predict(X)[0])
-                st.session_state.pred_results[ALGO_LR] = pred # Save to state for comparison
+                st.session_state.pred_results[ALGO_LR] = pred
                 
-                st.success(f"### Predicted Price: **${pred:,.2f}**")
-                m1, m2, m3 = st.columns(3)
-                m1.metric("MA_7", f"{ma7:,.2f}")
-                m2.metric("Volatility_7", f"{vol7:,.2f}")
-                m3.metric("Month / Day used", f"{start_month} / {start_day}")
-
             elif selected_algo == ALGO_RF:
                 vol7 = float(np.std(prices, ddof=1))
-                price_lag1 = prices[-1]
                 return_lag1 = np.log(prices[-1] / prices[-2])
                 X = pd.DataFrame([[vol_val, start_month, start_day, vol7, return_lag1]], columns=FEATURES[ALGO_RF])
                 change = float(models[ALGO_RF].predict(X)[0])
                 pred = price_lag1 * np.exp(change)
                 st.session_state.pred_results[ALGO_RF] = pred
-                
-                st.success(f"### Predicted Price: **${pred:,.2f}**")
-                st.caption(f"Model predicts a log return of {change:+.6f}, derived from the last known close of ${price_lag1:,.2f}.")
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Volatility_7", f"{vol7:,.2f}")
-                m2.metric("Return_Lag1", f"{return_lag1:+.6f}")
-                m3.metric("Month / Day used", f"{start_month} / {start_day}")
 
             elif selected_algo == ALGO_KNN:
                 prices_30 = prices[-30:]
@@ -530,18 +542,10 @@ with tab_predict:
                 ret1 = (prices_30[-1] - prices_30[-2]) / prices_30[-2]
                 ret2 = (prices_30[-2] - prices_30[-3]) / prices_30[-3]
                 vol_mom = vols_10[-1] / np.mean(vols_10)
-                price_lag1 = prices_30[-1]
                 X = pd.DataFrame([[vol_mom, vol7, vol30, rsi, ret1, ret2]], columns=FEATURES[ALGO_KNN])
                 diff = float(models[ALGO_KNN].predict(X)[0])
                 pred = price_lag1 + diff
                 st.session_state.pred_results[ALGO_KNN] = pred
-                
-                st.success(f"### Predicted Price: **${pred:,.2f}**")
-                st.caption(f"Model predicts the day-over-day price change (${diff:,.2f}), added to the last known close of ${price_lag1:,.2f}.")
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Volatility_7 / _30", f"{vol7:,.1f} / {vol30:,.1f}")
-                m2.metric("RSI_14", f"{rsi:.2f}")
-                m3.metric("Volume Momentum", f"{vol_mom:.3f}")
 
             elif selected_algo == ALGO_GB:
                 vol7 = float(np.std(prices[-7:], ddof=1))
@@ -549,23 +553,40 @@ with tab_predict:
                 mom7 = float((prices[-1] / prices[-8]) - 1)
                 X = pd.DataFrame([[vol_val, vol7, ret_lag1, mom7]], columns=FEATURES[ALGO_GB])
                 pred_log_ret = float(models[ALGO_GB].predict(X)[0])
-                pred = prices[-1] * np.exp(pred_log_ret)
+                pred = price_lag1 * np.exp(pred_log_ret)
                 st.session_state.pred_results[ALGO_GB] = pred
-                
-                st.success(f"### Predicted Price: **${pred:,.2f}**")
-                st.caption(f"Model predicts log return ({pred_log_ret:+.6f}), reconstructed from last close (${prices[-1]:,.2f}).")
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Volatility_7", f"{vol7:,.2f}")
-                m2.metric("Return_Lag1 (Log)", f"{ret_lag1:.4f}")
-                m3.metric("Momentum_7", f"{mom7:.2%}")
 
-            # FORECAST AHEAD
+            # FANCY FEATURE 2: TRADING SIGNALS (Unified Display)
+            pct_change = ((pred - price_lag1) / price_lag1) * 100
+            if pct_change > 0.5:
+                signal = "🟢 BUY (Strong Uptrend)"
+            elif pct_change < -0.5:
+                signal = "🔴 SELL (Downtrend)"
+            else:
+                signal = "🟡 HOLD (Sideways Momentum)"
+
+            # Layout for the Output
+            col_metric, col_context = st.columns([1, 2])
+            with col_metric:
+                st.metric(label="Predicted Next Close", value=f"${pred:,.2f}", delta=f"{pct_change:+.2f}%")
+                st.caption(f"**AI Signal:** {signal}")
+            
+            with col_context:
+                st.write("**Model Context:**")
+                if selected_algo == ALGO_LR:
+                    st.write(f"The 7-Day Moving Average is **${ma7:,.2f}** and Volatility is **{vol7:,.2f}**.")
+                elif selected_algo == ALGO_RF:
+                    st.write(f"The model predicts a log return of **{change:+.6f}**, derived from the last known close.")
+                elif selected_algo == ALGO_KNN:
+                    st.write(f"Calculated RSI_14 is **{rsi:.2f}** and short-term volatility is **{vol7:,.1f}**.")
+                elif selected_algo == ALGO_GB:
+                    st.write(f"7-Day momentum is currently at **{mom7:.2%}**.")
+
+            # FORECAST AHEAD EXECUTION
             if btn_forecast:
                 compute_and_store_forecast(selected_algo, prices, vols, anchor_date, int(forecast_days))
 
-    # 4. Global Display Check (This runs every time to persist the comparison table & graphs)
-    
-    # 4A. Next-Day Predictions Comparison Table
+    # 4. Global Display Checks
     if st.session_state.pred_results:
         st.markdown("---")
         if len(st.session_state.pred_results) == 1:
@@ -582,7 +603,6 @@ with tab_predict:
                 st.session_state.pred_results = {}
                 st.rerun()
 
-    # 4B. Combined Multi-Day Forecast Chart
     forecasts = st.session_state.get("forecast_results", {})
     if forecasts:
         st.markdown("---")
@@ -594,15 +614,11 @@ with tab_predict:
 
         st.dataframe(forecast_df.style.format("${:,.2f}"), use_container_width=True)
         st.line_chart(forecast_df)
-        st.caption(
-            "Each line is a recursive day-by-day forecast seeded only from that algorithm's "
-            "own entered data. Future Trading Volume is held near the average of what you entered."
-        )
+        st.caption("Each line is a recursive day-by-day forecast seeded only from that algorithm's own entered data.")
 
         if st.button("Clear Multi-Day Forecasts", key="clear_forecast"):
             st.session_state.forecast_results = {}
             st.rerun()
 
-    # Empty State Hint
-    if not st.session_state.pred_results and not forecasts and not btn_predict and not btn_forecast:
+    if not st.session_state.pred_results and not forecasts and not (btn_predict or btn_forecast):
         st.info("Click **Predict Next Day** or **Forecast Ahead** to see results generated here.")
