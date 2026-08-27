@@ -42,7 +42,7 @@ This repository contains an end-to-end machine learning project designed to pred
 │
 └── README.md
 
-
+````text
 ## ⚙️ Installation & Prerequisites
 
 To set up the environment, run this command in your terminal to install all the required dependencies for the models and the dashboard[cite: 1]:
