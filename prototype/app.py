@@ -379,6 +379,10 @@ with tab_compare:
 # TAB 3: PREDICT & FORECAST (Restructured)
 # ==========================================
 with tab_predict:
+    # Initialize session state for storing next-day predictions
+    if "pred_results" not in st.session_state:
+        st.session_state.pred_results = {}
+
     st.write("First, choose the algorithm you want to use. The data input form below will automatically disable the fields that the chosen model doesn't need.")
 
     # 1. Selection
@@ -443,11 +447,9 @@ with tab_predict:
         with bc3:
             btn_forecast = st.button("Forecast Ahead", use_container_width=True)
 
-    # 3. Results Frame
-    st.markdown("### 3. Prediction & Forecast Results")
-    
+    # 3. Process Button Clicks (Calculate and show detailed metrics for the *current run*)
     if btn_predict or btn_forecast:
-        # 1. Safely parse the exact date from user input
+        # Safely parse the exact date from user input
         now = datetime.now()
         start_year = int(year_val) if year_val is not None else now.year
         start_month = int(month_val) if month_val is not None else now.month
@@ -460,7 +462,7 @@ with tab_predict:
             anchor_date = pd.Timestamp(now.date())
             start_month, start_day = now.month, now.day
 
-        # 2. Extract correct data inputs based on selection
+        # Extract correct data inputs based on selection
         prices, vols = None, None
         errs = []
 
@@ -486,83 +488,101 @@ with tab_predict:
             st.error(f"Model file not found: {MODEL_FILES[selected_algo]}")
         else:
             # SINGLE DAY PREDICTION (Always calculate and show if either button is clicked)
-            if btn_predict or btn_forecast:
-                target_date = next_business_day(anchor_date).strftime('%A, %b %d, %Y')
-                st.markdown(f"#### Next-Day Prediction using **{selected_algo}**")
-                st.markdown(f"**Target Date:** {target_date}")
+            target_date = next_business_day(anchor_date).strftime('%A, %b %d, %Y')
+            st.markdown(f"### 3. Detailed Results: **{selected_algo}**")
+            st.markdown(f"**Target Date:** {target_date}")
+            
+            if selected_algo == ALGO_LR:
+                ma7 = float(np.mean(prices))
+                vol7 = float(np.std(prices, ddof=1))
+                X = pd.DataFrame([[vol_val, start_month, start_day, vol7, ma7]], columns=FEATURES[ALGO_LR])
+                pred = float(models[ALGO_LR].predict(X)[0])
+                st.session_state.pred_results[ALGO_LR] = pred # Save to state for comparison
                 
-                if selected_algo == ALGO_LR:
-                    ma7 = float(np.mean(prices))
-                    vol7 = float(np.std(prices, ddof=1))
-                    
-                    X = pd.DataFrame([[vol_val, start_month, start_day, vol7, ma7]], columns=FEATURES[ALGO_LR])
-                    pred = float(models[ALGO_LR].predict(X)[0])
-                    
-                    st.success(f"### Predicted Price: **${pred:,.2f}**")
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("MA_7", f"{ma7:,.2f}")
-                    m2.metric("Volatility_7", f"{vol7:,.2f}")
-                    m3.metric("Month / Day used", f"{start_month} / {start_day}")
+                st.success(f"### Predicted Price: **${pred:,.2f}**")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("MA_7", f"{ma7:,.2f}")
+                m2.metric("Volatility_7", f"{vol7:,.2f}")
+                m3.metric("Month / Day used", f"{start_month} / {start_day}")
 
-                elif selected_algo == ALGO_RF:
-                    vol7 = float(np.std(prices, ddof=1))
-                    price_lag1 = prices[-1]
-                    return_lag1 = np.log(prices[-1] / prices[-2])
-                    
-                    X = pd.DataFrame([[vol_val, start_month, start_day, vol7, return_lag1]], columns=FEATURES[ALGO_RF])
-                    change = float(models[ALGO_RF].predict(X)[0])
-                    pred = price_lag1 * np.exp(change)
-                    
-                    st.success(f"### Predicted Price: **${pred:,.2f}**")
-                    st.caption(f"Model predicts a log return of {change:+.6f}, derived from the last known close of ${price_lag1:,.2f}.")
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Volatility_7", f"{vol7:,.2f}")
-                    m2.metric("Return_Lag1", f"{return_lag1:+.6f}")
-                    m3.metric("Month / Day used", f"{start_month} / {start_day}")
+            elif selected_algo == ALGO_RF:
+                vol7 = float(np.std(prices, ddof=1))
+                price_lag1 = prices[-1]
+                return_lag1 = np.log(prices[-1] / prices[-2])
+                X = pd.DataFrame([[vol_val, start_month, start_day, vol7, return_lag1]], columns=FEATURES[ALGO_RF])
+                change = float(models[ALGO_RF].predict(X)[0])
+                pred = price_lag1 * np.exp(change)
+                st.session_state.pred_results[ALGO_RF] = pred
+                
+                st.success(f"### Predicted Price: **${pred:,.2f}**")
+                st.caption(f"Model predicts a log return of {change:+.6f}, derived from the last known close of ${price_lag1:,.2f}.")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Volatility_7", f"{vol7:,.2f}")
+                m2.metric("Return_Lag1", f"{return_lag1:+.6f}")
+                m3.metric("Month / Day used", f"{start_month} / {start_day}")
 
-                elif selected_algo == ALGO_KNN:
-                    prices_30 = prices[-30:]
-                    vols_10 = vols[-10:]
-                    vol30 = float(np.std(prices_30, ddof=1))
-                    vol7 = float(np.std(prices_30[-7:], ddof=1))
-                    rsi = calculate_rsi(prices_30, window=14)
-                    ret1 = (prices_30[-1] - prices_30[-2]) / prices_30[-2]
-                    ret2 = (prices_30[-2] - prices_30[-3]) / prices_30[-3]
-                    vol_mom = vols_10[-1] / np.mean(vols_10)
-                    price_lag1 = prices_30[-1]
+            elif selected_algo == ALGO_KNN:
+                prices_30 = prices[-30:]
+                vols_10 = vols[-10:]
+                vol30 = float(np.std(prices_30, ddof=1))
+                vol7 = float(np.std(prices_30[-7:], ddof=1))
+                rsi = calculate_rsi(prices_30, window=14)
+                ret1 = (prices_30[-1] - prices_30[-2]) / prices_30[-2]
+                ret2 = (prices_30[-2] - prices_30[-3]) / prices_30[-3]
+                vol_mom = vols_10[-1] / np.mean(vols_10)
+                price_lag1 = prices_30[-1]
+                X = pd.DataFrame([[vol_mom, vol7, vol30, rsi, ret1, ret2]], columns=FEATURES[ALGO_KNN])
+                diff = float(models[ALGO_KNN].predict(X)[0])
+                pred = price_lag1 + diff
+                st.session_state.pred_results[ALGO_KNN] = pred
+                
+                st.success(f"### Predicted Price: **${pred:,.2f}**")
+                st.caption(f"Model predicts the day-over-day price change (${diff:,.2f}), added to the last known close of ${price_lag1:,.2f}.")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Volatility_7 / _30", f"{vol7:,.1f} / {vol30:,.1f}")
+                m2.metric("RSI_14", f"{rsi:.2f}")
+                m3.metric("Volume Momentum", f"{vol_mom:.3f}")
 
-                    X = pd.DataFrame([[vol_mom, vol7, vol30, rsi, ret1, ret2]], columns=FEATURES[ALGO_KNN])
-                    diff = float(models[ALGO_KNN].predict(X)[0])
-                    pred = price_lag1 + diff
-                    
-                    st.success(f"### Predicted Price: **${pred:,.2f}**")
-                    st.caption(f"Model predicts the day-over-day price change (${diff:,.2f}), added to the last known close of ${price_lag1:,.2f}.")
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Volatility_7 / _30", f"{vol7:,.1f} / {vol30:,.1f}")
-                    m2.metric("RSI_14", f"{rsi:.2f}")
-                    m3.metric("Volume Momentum", f"{vol_mom:.3f}")
-
-                elif selected_algo == ALGO_GB:
-                    vol7 = float(np.std(prices[-7:], ddof=1))
-                    ret_lag1 = float(np.log(prices[-1] / prices[-2]))
-                    mom7 = float((prices[-1] / prices[-8]) - 1)
-                    
-                    X = pd.DataFrame([[vol_val, vol7, ret_lag1, mom7]], columns=FEATURES[ALGO_GB])
-                    pred_log_ret = float(models[ALGO_GB].predict(X)[0])
-                    pred = prices[-1] * np.exp(pred_log_ret)
-                    
-                    st.success(f"### Predicted Price: **${pred:,.2f}**")
-                    st.caption(f"Model predicts log return ({pred_log_ret:+.6f}), reconstructed from last close (${prices[-1]:,.2f}).")
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Volatility_7", f"{vol7:,.2f}")
-                    m2.metric("Return_Lag1 (Log)", f"{ret_lag1:.4f}")
-                    m3.metric("Momentum_7", f"{mom7:.2%}")
+            elif selected_algo == ALGO_GB:
+                vol7 = float(np.std(prices[-7:], ddof=1))
+                ret_lag1 = float(np.log(prices[-1] / prices[-2]))
+                mom7 = float((prices[-1] / prices[-8]) - 1)
+                X = pd.DataFrame([[vol_val, vol7, ret_lag1, mom7]], columns=FEATURES[ALGO_GB])
+                pred_log_ret = float(models[ALGO_GB].predict(X)[0])
+                pred = prices[-1] * np.exp(pred_log_ret)
+                st.session_state.pred_results[ALGO_GB] = pred
+                
+                st.success(f"### Predicted Price: **${pred:,.2f}**")
+                st.caption(f"Model predicts log return ({pred_log_ret:+.6f}), reconstructed from last close (${prices[-1]:,.2f}).")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Volatility_7", f"{vol7:,.2f}")
+                m2.metric("Return_Lag1 (Log)", f"{ret_lag1:.4f}")
+                m3.metric("Momentum_7", f"{mom7:.2%}")
 
             # FORECAST AHEAD
             if btn_forecast:
                 compute_and_store_forecast(selected_algo, prices, vols, anchor_date, int(forecast_days))
 
-    # Render Active Forecast Charts
+    # 4. Global Display Check (This runs every time to persist the comparison table & graphs)
+    
+    # 4A. Next-Day Predictions Comparison Table
+    if st.session_state.pred_results:
+        st.markdown("---")
+        if len(st.session_state.pred_results) == 1:
+            st.info("Run predictions for additional algorithms above to unlock the comparison table.")
+        else:
+            st.markdown("#### Next-Day Predictions Comparison")
+            res_df = pd.DataFrame(list(st.session_state.pred_results.items()), columns=["Algorithm", "Predicted Price"]).set_index("Algorithm")
+            st.dataframe(res_df.style.format("${:,.2f}"), use_container_width=True)
+            st.bar_chart(res_df)
+            spread = res_df["Predicted Price"].max() - res_df["Predicted Price"].min()
+            st.caption(f"Spread across filled-in algorithms: ${spread:,.2f}")
+
+            if st.button("Clear Single-Day Predictions", key="clear_single"):
+                st.session_state.pred_results = {}
+                st.rerun()
+
+    # 4B. Combined Multi-Day Forecast Chart
     forecasts = st.session_state.get("forecast_results", {})
     if forecasts:
         st.markdown("---")
@@ -579,8 +599,10 @@ with tab_predict:
             "own entered data. Future Trading Volume is held near the average of what you entered."
         )
 
-        if st.button("Clear all forecasts"):
+        if st.button("Clear Multi-Day Forecasts", key="clear_forecast"):
             st.session_state.forecast_results = {}
             st.rerun()
-    elif not btn_predict and not btn_forecast:
+
+    # Empty State Hint
+    if not st.session_state.pred_results and not forecasts and not btn_predict and not btn_forecast:
         st.info("Click **Predict Next Day** or **Forecast Ahead** to see results generated here.")
