@@ -177,7 +177,6 @@ def run_recursive_forecast(algo, model, seed_prices, seed_volumes, anchor_date, 
         prices_7 = price_hist[-7:]
         vol7 = float(np.std(prices_7, ddof=1)) if len(prices_7) > 1 else 0.0
 
-        # FIX: Wrap X inputs in pd.DataFrame with specific column names to prevent ColumnTransformer errors
         if algo == ALGO_LR:
             ma7 = float(np.mean(prices_7))
             X = pd.DataFrame([[vol_forecast, month, day, vol7, ma7]], columns=FEATURES[ALGO_LR])
@@ -216,12 +215,11 @@ def run_recursive_forecast(algo, model, seed_prices, seed_volumes, anchor_date, 
         vol_hist = (vol_hist + [vol_forecast])[-10:]
     return dates, preds
 
-def compute_and_store_forecast(algo, seed_prices, seed_volumes, n_days):
+def compute_and_store_forecast(algo, seed_prices, seed_volumes, anchor_date, n_days):
     model = models[algo]
     if model is None:
         st.error(f"Model file not found: {MODEL_FILES[algo]}")
         return
-    anchor_date = pd.Timestamp(datetime.now().date())
     dates, preds = run_recursive_forecast(algo, model, seed_prices, seed_volumes, anchor_date, n_days)
     forecast_series = pd.Series(preds, index=pd.DatetimeIndex(dates), name=algo)
     if "forecast_results" not in st.session_state:
@@ -395,19 +393,20 @@ with tab_predict:
 
     # 2. Input Frame
     st.markdown("### 2. Enter Data")
-    st.caption(f"Features used by **{selected_algo}**: {', '.join(FEATURES[selected_algo])}")
+    st.caption(f"Features mathematically used by **{selected_algo}**: {', '.join(FEATURES[selected_algo])}")
     
     with st.container(border=True):
-        st.markdown("#### Base Inputs")
-        c1, c2, c3 = st.columns(3)
+        st.markdown("#### Timeline & Base Inputs")
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             help_vol = "Used by LR, RF, GB." if en_vol else "This algorithm does not use single-day volume."
             vol_val = st.number_input("Yesterday's Trading Volume", value=51877.0, disabled=not en_vol, help=help_vol)
         with c2:
-            help_date = "Used by LR and RF to capture seasonality." if en_lr_rf else "This algorithm does not use calendar dates."
-            month_val = st.number_input("Month (1-12) [blank=today]", min_value=1, max_value=12, value=None, disabled=not en_lr_rf, help=help_date)
+            year_val = st.number_input("Year [blank=today]", min_value=2000, max_value=2100, value=None, help="Sets the starting year for the forecast timeline.")
         with c3:
-            day_val = st.number_input("Day (1-31) [blank=today]", min_value=1, max_value=31, value=None, disabled=not en_lr_rf, help=help_date)
+            month_val = st.number_input("Month (1-12) [blank=today]", min_value=1, max_value=12, value=None, help="Sets the starting month. Also used as a mathematical feature by LR and RF.")
+        with c4:
+            day_val = st.number_input("Day (1-31) [blank=today]", min_value=1, max_value=31, value=None, help="Sets the starting day. Also used as a mathematical feature by LR and RF.")
 
         st.markdown("#### Historical Prices & Volumes")
         # Render the text areas, graying out those not associated with the selected algorithm
@@ -448,7 +447,20 @@ with tab_predict:
     st.markdown("### 3. Prediction & Forecast Results")
     
     if btn_predict or btn_forecast:
-        # Extract correct inputs based on selection
+        # 1. Safely parse the exact date from user input
+        now = datetime.now()
+        start_year = int(year_val) if year_val is not None else now.year
+        start_month = int(month_val) if month_val is not None else now.month
+        start_day = int(day_val) if day_val is not None else now.day
+        
+        try:
+            anchor_date = pd.Timestamp(year=start_year, month=start_month, day=start_day)
+        except ValueError:
+            st.error("Invalid date provided (e.g. February 31st). Defaulting to today's date.")
+            anchor_date = pd.Timestamp(now.date())
+            start_month, start_day = now.month, now.day
+
+        # 2. Extract correct data inputs based on selection
         prices, vols = None, None
         errs = []
 
@@ -473,33 +485,31 @@ with tab_predict:
         elif models[selected_algo] is None:
             st.error(f"Model file not found: {MODEL_FILES[selected_algo]}")
         else:
-            # SINGLE DAY PREDICTION
-            if btn_predict:
+            # SINGLE DAY PREDICTION (Always calculate and show if either button is clicked)
+            if btn_predict or btn_forecast:
+                target_date = next_business_day(anchor_date).strftime('%A, %b %d, %Y')
                 st.markdown(f"#### Next-Day Prediction using **{selected_algo}**")
+                st.markdown(f"**Target Date:** {target_date}")
                 
                 if selected_algo == ALGO_LR:
-                    final_month = int(month_val) if month_val is not None else datetime.now().month
-                    final_day = int(day_val) if day_val is not None else datetime.now().day
                     ma7 = float(np.mean(prices))
                     vol7 = float(np.std(prices, ddof=1))
                     
-                    X = pd.DataFrame([[vol_val, final_month, final_day, vol7, ma7]], columns=FEATURES[ALGO_LR])
+                    X = pd.DataFrame([[vol_val, start_month, start_day, vol7, ma7]], columns=FEATURES[ALGO_LR])
                     pred = float(models[ALGO_LR].predict(X)[0])
                     
                     st.success(f"### Predicted Price: **${pred:,.2f}**")
                     m1, m2, m3 = st.columns(3)
                     m1.metric("MA_7", f"{ma7:,.2f}")
                     m2.metric("Volatility_7", f"{vol7:,.2f}")
-                    m3.metric("Month / Day used", f"{final_month} / {final_day}")
+                    m3.metric("Month / Day used", f"{start_month} / {start_day}")
 
                 elif selected_algo == ALGO_RF:
-                    final_month = int(month_val) if month_val is not None else datetime.now().month
-                    final_day = int(day_val) if day_val is not None else datetime.now().day
                     vol7 = float(np.std(prices, ddof=1))
                     price_lag1 = prices[-1]
                     return_lag1 = np.log(prices[-1] / prices[-2])
                     
-                    X = pd.DataFrame([[vol_val, final_month, final_day, vol7, return_lag1]], columns=FEATURES[ALGO_RF])
+                    X = pd.DataFrame([[vol_val, start_month, start_day, vol7, return_lag1]], columns=FEATURES[ALGO_RF])
                     change = float(models[ALGO_RF].predict(X)[0])
                     pred = price_lag1 * np.exp(change)
                     
@@ -508,7 +518,7 @@ with tab_predict:
                     m1, m2, m3 = st.columns(3)
                     m1.metric("Volatility_7", f"{vol7:,.2f}")
                     m2.metric("Return_Lag1", f"{return_lag1:+.6f}")
-                    m3.metric("Month / Day used", f"{final_month} / {final_day}")
+                    m3.metric("Month / Day used", f"{start_month} / {start_day}")
 
                 elif selected_algo == ALGO_KNN:
                     prices_30 = prices[-30:]
@@ -550,7 +560,7 @@ with tab_predict:
 
             # FORECAST AHEAD
             if btn_forecast:
-                compute_and_store_forecast(selected_algo, prices, vols, int(forecast_days))
+                compute_and_store_forecast(selected_algo, prices, vols, anchor_date, int(forecast_days))
 
     # Render Active Forecast Charts
     forecasts = st.session_state.get("forecast_results", {})
