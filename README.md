@@ -42,13 +42,16 @@ This repository contains an end-to-end machine learning project designed to pred
 │
 └── README.md
 
-````text
+````
+
+
 ## ⚙️ Installation & Prerequisites
 
 To set up the environment, run this command in your terminal to install all the required dependencies for the models and the dashboard[cite: 1]:
 
 ```bash
 pip install pandas matplotlib seaborn scikit-learn streamlit numpy plotly joblib
+```
 
 ## 🚀 Execution Order
 
@@ -58,11 +61,13 @@ To run the project properly from scratch, execute the following commands in the 
 Clean the raw data, handle missing values, and engineer predictive features (Lags, Rolling Volatility, RSI, MACD, etc.).
 ```bash
 python src/preprocessing.py
+```
 
 ### Step 2: Exploratory Data Analysis (EDA)
 Generate the analytical plots (automatically saved to report_assets/plots/).
 ```bash
 python src/eda_visuals.py
+```
 
 ### Step 3: Model Training
 Train the predictive models. Run the baseline training first, followed by the walk-forward validation scripts.
@@ -71,6 +76,7 @@ python src/models/linear_reg_walkforward.py
 python src/models/train_knn.py
 python src/models/train_random_forest.py
 python src/models/train_gradient_boosting.py
+```
 
 ### Step 4: Launch the Web Application
 Launch the interactive Streamlit dashboard to view metrics and make forecasts.
