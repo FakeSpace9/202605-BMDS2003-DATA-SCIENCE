@@ -5,29 +5,23 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import joblib
 from utils import load_raw_dataset
 
-# ------------------------------------------------------------------
 # 1. Load data
-# ------------------------------------------------------------------
 current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
 output_dir = project_root / "data" / "processed"
 
-# 2. Load the data
 df = load_raw_dataset()
 
 print("Initial shape:", df.shape)
 print(df.head())
 print(df.dtypes)
 
-# ------------------------------------------------------------------
+
 # 2. Convert 'Date' to datetime and sort chronologically
-# ------------------------------------------------------------------
 df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
 df = df.sort_values('Date').reset_index(drop=True)
 
-# ------------------------------------------------------------------
 # 3. Check for missing values
-# ------------------------------------------------------------------
 print("\nMissing values per column before drop:")
 print(df.isnull().sum())
 
@@ -40,23 +34,17 @@ before = len(df)
 df = df.dropna(subset=price_cols).reset_index(drop=True)
 print(f"\nDropped {before - len(df)} rows with missing/zero price fields.")
 
-# ------------------------------------------------------------------
 # 4. Check and remove duplicate rows / duplicate dates
-# ------------------------------------------------------------------
 print("\nDuplicate rows:", df.duplicated().sum())
 df = df.drop_duplicates(subset='Date', keep='first').reset_index(drop=True)
 
-# ------------------------------------------------------------------
 # 5. Ensure correct data types
-# ------------------------------------------------------------------
 numeric_cols = ['Price', 'Open', 'High', 'Low', 'Volume', 'Chg%']
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors='coerce')
 df = df.dropna(subset=numeric_cols).reset_index(drop=True)
 
-# ------------------------------------------------------------------
 # 6. Outlier detection (IQR method)
-# ------------------------------------------------------------------
 def flag_outliers_iqr(series, factor=1.5):
     q1, q3 = series.quantile(0.25), series.quantile(0.75)
     iqr = q3 - q1
@@ -73,9 +61,8 @@ print(f"\nFlagged (not dropped) {df['Is_Outlier_Price'].sum()} Price outliers, "
       f"{df['Is_Outlier_ChgPct'].sum()} Chg% outliers, "
       f"{df['Is_LowVolume'].sum()} low-volume rows.")
 
-# ------------------------------------------------------------------
+
 # 7. Feature engineering
-# ------------------------------------------------------------------
 # Lags
 df["Price_Lag1"] = df["Price"].shift(1)
 df["Price_Lag2"] = df["Price"].shift(2)
@@ -174,9 +161,7 @@ print(f"\nDropped {before - len(df)} leading rows with incomplete lag/rolling wi
 print(f"Final cleaned dataset shape: {df.shape}")
 print(f"Date range: {df['Date'].min().date()} -> {df['Date'].max().date()}")
 
-# ------------------------------------------------------------------
 # 8. Feature scaling 
-# ------------------------------------------------------------------
 scaler_feature_cols = ['Open', 'High', 'Low', 'Volume']
 scaler = StandardScaler()
 
@@ -185,9 +170,7 @@ df[scaler_feature_cols] = df[scaler_feature_cols].apply(pd.to_numeric, errors='c
 # Fitting the scaler on the entire dataset and scaling the columns
 df[scaler_feature_cols] = scaler.fit_transform(df[scaler_feature_cols])
 
-# ------------------------------------------------------------------
 # 9. Save cleaned dataset and fitted scaler
-# ------------------------------------------------------------------
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # Save the final cleaned and scaled dataset

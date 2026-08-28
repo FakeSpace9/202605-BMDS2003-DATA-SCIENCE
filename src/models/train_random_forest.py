@@ -1,16 +1,3 @@
-"""
-Random Forest walk-forward price model.
-
-Approach:
-- Predicts LOG RETURN (log(Price / Price_Lag1)), not raw
-  price, since tree models can't extrapolate past training
-  range. Reconstructed as Price = Price_Lag1 * exp(pred_return).
-- Features: Volume, Month, Day, Volatility_7, Return_Lag1
-  (prior day's log return, as a momentum signal).
-- Walk-forward validation: train on years before a given
-  year, test on that year (small trailing years merged in).
-"""
-
 from pathlib import Path
 import sys
 import numpy as np

@@ -1,13 +1,3 @@
-"""
-train_knn_walkforward.py
-Gold Price Prediction — CRISP-DM: Modelling & Evaluation phase
-
-Improved KNN: 
-Uses "differencing" to predict the daily price change rather than the 
-absolute price. This completely fixes the KNN extrapolation problem and 
-prevents massive negative R2 scores during walk-forward validation.
-"""
-
 from pathlib import Path
 import sys
 import numpy as np
@@ -25,8 +15,6 @@ MODEL_OUTPUT_PATH = project_root / "prototype"
 
 TARGET = "Price"
 
-# KNN requires stationary features (percentages/ratios) to calculate accurate 
-# distances across different decades. MA_7 is removed because it drifts upwards.
 FEATURES = [
     "Volume_Momentum",
     "Volatility_7",
@@ -37,7 +25,7 @@ FEATURES = [
 ]
 
 # KNN Hyperparameters
-N_NEIGHBORS = 15      # Increased for smoother, more generalized daily difference predictions
+N_NEIGHBORS = 15      
 WEIGHTS = "uniform"
 METRIC = "euclidean"
 

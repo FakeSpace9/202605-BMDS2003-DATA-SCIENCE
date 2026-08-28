@@ -1,10 +1,3 @@
-"""
-Gradient Boosting walk-forward price model.
-
-Predicts LOG RETURN and reconstructs Price using Price_Lag1.
-Uses walk-forward validation with 4 features.
-"""
-
 from pathlib import Path
 import sys
 import numpy as np

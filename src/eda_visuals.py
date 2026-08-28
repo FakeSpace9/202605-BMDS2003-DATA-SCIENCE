@@ -5,10 +5,8 @@ from pathlib import Path
 from utils import load_raw_dataset
 
 
-# ============================================================
-# 1. PROJECT PATHS
-# ============================================================
 
+# 1. PROJECT PATHS
 current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
 
@@ -17,10 +15,8 @@ PLOT_PATH = project_root / "report_assets" / "plots"
 PLOT_PATH.mkdir(parents=True, exist_ok=True)
 
 
-# ============================================================
-# 2. LOAD DATASET
-# ============================================================
 
+# 2. LOAD DATASET
 df = load_raw_dataset()
 
 # Clean column names
@@ -30,11 +26,7 @@ print("Dataset loaded successfully.")
 print(f"Dataset shape: {df.shape}")
 print(f"Columns: {list(df.columns)}")
 
-
-# ============================================================
 # 3. IDENTIFY IMPORTANT COLUMNS
-# ============================================================
-
 # Identify date column
 date_col = next(
     (
@@ -59,10 +51,7 @@ price_col = next(
 )
 
 
-# ============================================================
 # 4. CONVERT DATE AND PRICE
-# ============================================================
-
 if date_col:
 
     df[date_col] = pd.to_datetime(
@@ -93,20 +82,14 @@ if price_col is None:
     print("WARNING: Price column was not found.")
 
 
-# ============================================================
 # 5. PLOT SETTINGS
-# ============================================================
-
 plt.rcParams["figure.figsize"] = (10, 6)
 plt.rcParams["axes.grid"] = True
 
 created = []
 
 
-# ============================================================
 # 6. SAVE PLOT FUNCTION
-# ============================================================
-
 def save_plot(
     filename,
     title,
@@ -143,10 +126,7 @@ def save_plot(
     print(f"Saved: {output_path}")
 
 
-# ============================================================
 # 7. NUMERIC COLUMNS
-# ============================================================
-
 numeric_cols = (
     df
     .select_dtypes(include=np.number)
@@ -155,10 +135,8 @@ numeric_cols = (
 )
 
 
-# ============================================================
-# 8. CALCULATE PRICE MOVEMENT FEATURES
-# ============================================================
 
+# 8. CALCULATE PRICE MOVEMENT FEATURES
 if price_col:
 
     # Daily price change
@@ -191,11 +169,8 @@ if price_col:
     )
 
 
-# ============================================================
 # GRAPH 1
 # GOLD PRICE OVER TIME
-# ============================================================
-
 if date_col and price_col:
 
     plt.figure()
@@ -214,11 +189,8 @@ if date_col and price_col:
     )
 
 
-# ============================================================
 # GRAPH 2
 # GOLD PRICE DISTRIBUTION
-# ============================================================
-
 if price_col:
 
     plt.figure()
@@ -238,11 +210,8 @@ if price_col:
     )
 
 
-# ============================================================
 # GRAPH 3
 # YEARLY PRICE RANGE
-# ============================================================
-
 if price_col and date_col:
 
     plt.figure()
@@ -285,13 +254,8 @@ if price_col and date_col:
     )
 
 
-# ============================================================
 # GRAPH 4
 # AVERAGE PRICE CHANGE BY QUARTER
-#
-# Question:
-# Which quarter tends to have stronger price movements?
-# ============================================================
 
 if price_col and date_col:
 
@@ -334,11 +298,8 @@ if price_col and date_col:
     )
 
 
-# ============================================================
 # GRAPH 5
 # DAILY RETURN DISTRIBUTION
-# ============================================================
-
 if price_col:
 
     plt.figure()
@@ -358,11 +319,8 @@ if price_col:
     )
 
 
-# ============================================================
 # GRAPH 6
 # VOLATILITY DISTRIBUTION
-# ============================================================
-
 if price_col:
 
     plt.figure()
@@ -383,11 +341,8 @@ if price_col:
     )
 
 
-# ============================================================
 # GRAPH 7
 # AVERAGE VOLATILITY BY YEAR
-# ============================================================
-
 if price_col and date_col:
 
     plt.figure()
@@ -411,14 +366,10 @@ if price_col and date_col:
     )
 
 
-# ============================================================
 # GRAPH 8
 # TOP 10 LARGEST DAILY PRICE INCREASES
-#
 # Question:
 # What were the largest daily increases in gold price?
-# ============================================================
-
 if price_col and date_col:
 
     largest_increases = (
@@ -455,14 +406,10 @@ if price_col and date_col:
     )
 
 
-# ============================================================
 # GRAPH 9
 # TOP 10 LARGEST DAILY PRICE DECREASES
-#
 # Question:
 # What were the largest daily decreases in gold price?
-# ============================================================
-
 if price_col and date_col:
 
     largest_decreases = (
@@ -499,15 +446,11 @@ if price_col and date_col:
         "Price Decrease"
     )
 
-# ============================================================
 # GRAPH 10
 # YEARLY GOLD PRICE CHANGE
-#
 # Question:
 # How much did the gold price change from the beginning
 # to the end of each year?
-# ============================================================
-
 if date_col and price_col:
 
     yearly_open = (
@@ -550,15 +493,11 @@ if date_col and price_col:
     )
 
 
-# ============================================================
 # GRAPH 11
 # MONTHLY POSITIVE VS NEGATIVE DAYS
-#
 # Question:
 # Do gold prices increase or decrease more often
 # during different months?
-# ============================================================
-
 if price_col and date_col:
 
     monthly_data = (
@@ -656,11 +595,8 @@ if price_col and date_col:
     )
 
 
-# ============================================================
 # GRAPH 12
 # YEARLY AVERAGE GOLD PRICE
-# ============================================================
-
 if date_col and price_col:
 
     yearly_price = (
@@ -687,14 +623,11 @@ if date_col and price_col:
     )
 
 
-# ============================================================
 # GRAPH 13
 # YEARLY GOLD PRICE GROWTH
 #
 # Question:
 # Which years experienced the largest price increases?
-# ============================================================
-
 if date_col and price_col:
 
     yearly_avg = (
@@ -732,14 +665,10 @@ if date_col and price_col:
     )
 
 
-# ============================================================
 # GRAPH 14
 # AVERAGE MONTHLY GOLD PRICE
-#
 # Question:
 # Which months have higher or lower average gold prices?
-# ============================================================
-
 if date_col and price_col:
 
     monthly_average = (
@@ -788,11 +717,8 @@ if date_col and price_col:
     )
 
 
-# ============================================================
 # GRAPH 15
 # CORRELATION MATRIX
-# ============================================================
-
 if len(numeric_cols) >= 2:
 
     correlation_cols = (
@@ -859,10 +785,8 @@ if len(numeric_cols) >= 2:
     )
 
 
-# ============================================================
-# 16. FINAL SUMMARY
-# ============================================================
 
+# 16. FINAL SUMMARY
 print()
 print("=" * 60)
 print("GRAPH GENERATION COMPLETE")

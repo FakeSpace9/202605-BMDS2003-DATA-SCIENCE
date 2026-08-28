@@ -1,8 +1,3 @@
-"""
-train_linear_regression_walkforward.py
-Gold Price Prediction — CRISP-DM: Modelling & Evaluation phase
-"""
-
 from pathlib import Path
 import sys
 import pandas as pd
@@ -82,10 +77,7 @@ def main():
         X_train, y_train = train_fold[FEATURES], train_fold[TARGET]
         X_test, y_test = test_fold[FEATURES], test_fold[TARGET]
 
-        # ---------------------------------------------------------
         # Create a Pipeline that ONLY scales the 'Volume' column
-        # and passes the rest (Month, Day, MA_7) through unmodified.
-        # ---------------------------------------------------------
         preprocessor = ColumnTransformer(
             transformers=[('vol_scaler', StandardScaler(), ['Volume'])],
             remainder='passthrough'
