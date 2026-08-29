@@ -43,8 +43,6 @@ MIN_TRAIN_SIZE = 100
 OUTPUT_DIR = PROJECT_ROOT / "prototype"
 
 def prepare_dataset() -> pd.DataFrame:
-    """Load, sort, and enrich the cleaned dataset with the
-    log-return target column."""
 
     df = load_cleaned_dataset()
     df["Date"] = pd.to_datetime(df["Date"])
@@ -58,7 +56,6 @@ def prepare_dataset() -> pd.DataFrame:
 
     df = df.dropna(subset=needed).reset_index(drop=True)
 
-    # log() is undefined for non-positive values
     positive = (df[PRICE_COL] > 0) & (df[LAG1_COL] > 0)
     df = df.loc[positive].reset_index(drop=True)
 
@@ -70,14 +67,7 @@ def prepare_dataset() -> pd.DataFrame:
 
     return df
 
-# Fold construction
-
 def make_test_windows(df: pd.DataFrame) -> list[list[int]]:
-    """Turn calendar years (after the warm-up period) into a
-    list of test windows. A window is normally a single year,
-    but a trailing year with too few rows gets folded into the
-    previous window instead of forming its own tiny test set.
-    """
 
     all_years = sorted(df["Year"].unique())
     candidate_years = all_years[WARMUP_YEARS:]
@@ -96,11 +86,7 @@ def make_test_windows(df: pd.DataFrame) -> list[list[int]]:
 def window_label(window: list[int]) -> str:
     return str(window[0]) if len(window) == 1 else f"{window[0]}-{window[-1]}"
 
-# Single-fold training
-
 def run_single_fold(df: pd.DataFrame, window: list[int]) -> dict | None:
-    """Train on everything before `window`, evaluate on `window`.
-    Returns a dict with metrics/importances, or None if skipped."""
 
     label = window_label(window)
     cutoff_year = window[0]
@@ -115,7 +101,6 @@ def run_single_fold(df: pd.DataFrame, window: list[int]) -> dict | None:
     model = RandomForestRegressor(**RF_PARAMS)
     model.fit(train_df[FEATURE_COLS], train_df[RETURN_COL])
 
-    # predictions come out as log returns -> convert back to price
     train_pred_change = model.predict(train_df[FEATURE_COLS])
     test_pred_change = model.predict(test_df[FEATURE_COLS])
 

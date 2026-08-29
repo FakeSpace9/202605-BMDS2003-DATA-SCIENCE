@@ -53,7 +53,7 @@ def prepare_dataset() -> pd.DataFrame:
 
     df[RETURN_COL] = np.log(df[PRICE_COL] / df[LAG1_COL])
     df["Return_Lag1"] = df[RETURN_COL].shift(1)
-    df["Momentum_7"] = (df[PRICE_COL] / df[PRICE_COL].shift(7) - 1)
+    df["Momentum_7"] = (df[LAG1_COL] / df[LAG1_COL].shift(7) - 1)
 
     needed = [
         "Date",
